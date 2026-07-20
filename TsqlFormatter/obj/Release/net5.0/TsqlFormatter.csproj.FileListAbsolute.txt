@@ -1,0 +1,15 @@
+C:\Tools\TsqlFormatter\TsqlFormatter\bin\Release\net5.0\TsqlFormatter.exe
+C:\Tools\TsqlFormatter\TsqlFormatter\bin\Release\net5.0\TsqlFormatter.deps.json
+C:\Tools\TsqlFormatter\TsqlFormatter\bin\Release\net5.0\TsqlFormatter.runtimeconfig.json
+C:\Tools\TsqlFormatter\TsqlFormatter\bin\Release\net5.0\TsqlFormatter.runtimeconfig.dev.json
+C:\Tools\TsqlFormatter\TsqlFormatter\bin\Release\net5.0\TsqlFormatter.dll
+C:\Tools\TsqlFormatter\TsqlFormatter\bin\Release\net5.0\TsqlFormatter.pdb
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.GeneratedMSBuildEditorConfig.editorconfig
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.AssemblyInfoInputs.cache
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.AssemblyInfo.cs
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.csproj.CoreCompileInputs.cache
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.dll
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\refint\TsqlFormatter.dll
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.pdb
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\TsqlFormatter.genruntimeconfig.cache
+C:\Tools\TsqlFormatter\TsqlFormatter\obj\Release\net5.0\ref\TsqlFormatter.dll
