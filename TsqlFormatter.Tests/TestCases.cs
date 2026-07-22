@@ -104,6 +104,33 @@ public static class TestCases
             Input    = "select count(*) OVER (PARTITION BY a.[G1], a.[G2] ORDER BY a.[D1], a.[D2]) as c from t",
             Expected = "select count(*) over (partition by a.[G1], a.[G2] order by a.[D1], a.[D2]) as c\nfrom t",
         },
+
+        // ── convert/cast keep type parens; dotted function calls; stmt boundaries ─
+        new TestCase {
+            Rule = "convert", Name = "convert keeps varchar(n) parens",
+            Input    = "select convert(varchar(10), id) as c from t",
+            Expected = "select convert(varchar(10), id) as c\nfrom t",
+        },
+        new TestCase {
+            Rule = "convert", Name = "cast keeps type parens",
+            Input    = "select cast(x as varchar(20)) as c from t",
+            Expected = "select cast(x as varchar(20)) as c\nfrom t",
+        },
+        new TestCase {
+            Rule = "dottedfn", Name = "multi-part function name with args",
+            Input    = "select webcar.dbo.datafirst(@yy, @mm) as d from t",
+            Expected = "select webcar.dbo.datafirst(@yy, @mm) as d\nfrom t",
+        },
+        new TestCase {
+            Rule = "stmtbound", Name = "assignment select column list ends at DECLARE",
+            Input    = "select @yy=2026,@mm=6\ndeclare @z int",
+            Expected = "select\n\t@yy = 2026,\n\t@mm = 6\ndeclare @z int",
+        },
+        new TestCase {
+            Rule = "stmtbound", Name = "assignment select column list ends at EXEC",
+            Input    = "select @x = 1\nexec('do_something')",
+            Expected = "select @x = 1\nexec('do_something')",
+        },
         new TestCase {
             Rule = "2.15", Name = "function call: no space before (",
             Input    = "select count(*), max(sal), substring(name, 1, 3) from emp",

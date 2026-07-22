@@ -883,6 +883,13 @@ public sealed class Parser
             var col = new ColumnRefNode();
             col.Parts.Add(Advance());
             while (PeekIs(TokenType.Dot)) { col.Parts.Add(Advance()); col.Parts.Add(Advance()); }
+            // Dotted / quoted function call: schema.fn(args), [db].[schema].[fn](args).
+            // (A single-part name followed by '(' was already handled as a function above.)
+            if (PeekIs(TokenType.LeftParen) && tok.Type != TokenType.Variable)
+            {
+                var fnName = string.Join("", col.Parts.Select(p => p.Value));
+                return ParseFunctionCallBody(fnName, isKeyword: false);
+            }
             col.TrailingComment = TryTakeSameLineComment();
             return col;
         }
@@ -946,15 +953,21 @@ public sealed class Parser
 
     private AstNode ParseDataType()
     {
-        var parts = new ColumnRefNode();
-        parts.Parts.Add(Advance());
+        // Keep every token, INCLUDING the parens and length/precision, so the type renders
+        // as "varchar(10)" / "decimal(18, 2)" instead of losing its parens ("varchar10").
+        var raw = new RawTokensNode();
+        raw.Tokens.Add(Advance());                 // type name
         if (PeekIs(TokenType.LeftParen))
         {
-            Advance();
-            while (!IsAtEnd() && !PeekIs(TokenType.RightParen)) { parts.Parts.Add(Advance()); if (PeekIs(TokenType.Comma)) parts.Parts.Add(Advance()); }
-            Expect(TokenType.RightParen);
+            raw.Tokens.Add(Advance());             // (
+            while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
+            {
+                raw.Tokens.Add(Advance());
+                if (PeekIs(TokenType.Comma)) raw.Tokens.Add(Advance());
+            }
+            if (PeekIs(TokenType.RightParen)) raw.Tokens.Add(Advance());   // )
         }
-        return parts;
+        return raw;
     }
 
     /// <summary>
@@ -1124,7 +1137,17 @@ public sealed class Parser
 
     private FunctionCallNode ParseFunctionCall()
     {
-        var nameToken = Advance(); Advance(); // name + (
+        var nameToken = Advance(); // name (single token; '(' is next)
+        return ParseFunctionCallBody(nameToken.Value, nameToken.Type == TokenType.Keyword);
+    }
+
+    /// <summary>
+    /// Parses a function call's '(' argument list ')' and optional OVER clause. The name may
+    /// be multi-part (e.g. schema.fn) and is supplied by the caller; the current token is '('.
+    /// </summary>
+    private FunctionCallNode ParseFunctionCallBody(string name, bool isKeyword)
+    {
+        Advance(); // (
         // Optional set quantifier in aggregates: count(distinct x), sum(all y)
         string? setQuantifier = null;
         if (Peek().IsKeyword("DISTINCT")) { Advance(); setQuantifier = "distinct"; }
@@ -1141,7 +1164,7 @@ public sealed class Parser
         // Window function: OVER clause may follow the closing paren
         AstNode? overClause = null;
         if (Peek().IsKeyword("OVER")) { Advance(); overClause = ParseWindowSpec(); }
-        var fn = new FunctionCallNode { Name = nameToken.Value, IsKeywordFunction = nameToken.Type == TokenType.Keyword, OverClause = overClause, SetQuantifier = setQuantifier };
+        var fn = new FunctionCallNode { Name = name, IsKeywordFunction = isKeyword, OverClause = overClause, SetQuantifier = setQuantifier };
         fn.Arguments.AddRange(args);
         return fn;
     }
@@ -1358,6 +1381,14 @@ public sealed class Parser
             || t.IsKeyword("ORDER") || t.IsKeyword("HAVING") || t.IsKeyword("UNION")
             || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT") || t.IsKeyword("SELECT")
             || t.IsKeyword("END")  // terminates a column list inside BEGIN/END
+            // A new statement keyword ends the column list of an assignment SELECT that has
+            // no FROM, e.g. "select @x = 1 \n declare ..." or "... \n exec (...)".
+            || t.IsKeyword("INSERT") || t.IsKeyword("UPDATE") || t.IsKeyword("DELETE")
+            || t.IsKeyword("CREATE") || t.IsKeyword("DROP")   || t.IsKeyword("BEGIN")
+            || t.IsKeyword("EXEC")   || t.IsKeyword("EXECUTE")|| t.IsKeyword("IF")
+            || t.IsKeyword("WHILE")  || t.IsKeyword("RETURN") || t.IsKeyword("PRINT")
+            || t.IsKeyword("MERGE")  || t.IsKeyword("TRUNCATE")
+            || t.Type == TokenType.DeclareKeyword
             || t.Type == TokenType.EndOfFile || t.Type == TokenType.RightParen
             || t.Type == TokenType.Semicolon || IsGoKeyword();
     }
