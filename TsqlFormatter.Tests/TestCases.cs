@@ -90,6 +90,21 @@ public static class TestCases
             Expected = "select row_number() over (partition by dep order by sal desc) as rn\nfrom emp",
         },
         new TestCase {
+            Rule = "window", Name = "over: uppercase ORDER BY and dotted column lowercased/tightened",
+            Input    = "select row_number() OVER (ORDER BY a.[Id]) as [Rn] from [dbo].[A] a",
+            Expected = "select row_number() over (order by a.[Id]) as [Rn]\nfrom [dbo].[A] as a",
+        },
+        new TestCase {
+            Rule = "window", Name = "over: partition by + order by desc, uppercase and dotted",
+            Input    = "select sum(x) OVER (PARTITION BY a.[G] ORDER BY a.[D] DESC) as s from t",
+            Expected = "select sum(x) over (partition by a.[G] order by a.[D] desc) as s\nfrom t",
+        },
+        new TestCase {
+            Rule = "window", Name = "over: multiple partition/order columns keep comma spacing",
+            Input    = "select count(*) OVER (PARTITION BY a.[G1], a.[G2] ORDER BY a.[D1], a.[D2]) as c from t",
+            Expected = "select count(*) over (partition by a.[G1], a.[G2] order by a.[D1], a.[D2]) as c\nfrom t",
+        },
+        new TestCase {
             Rule = "2.15", Name = "function call: no space before (",
             Input    = "select count(*), max(sal), substring(name, 1, 3) from emp",
             Expected = "select\n\tcount(*),\n\tmax(sal),\n\tsubstring(name, 1, 3)\nfrom emp",

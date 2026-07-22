@@ -67,11 +67,45 @@ internal static class RuleHelpers
             FunctionCallNode fn => EmitFunction(fn, engine, indent),
             CaseExprNode  ce => EmitCase(ce, engine, indent),
             InValueGroupNode grp => string.Join(", ", grp.Values.Select(v => EmitExpr(v, engine, indent))),
-            RawTokensNode rt => string.Join(" ", rt.Tokens
-                .Where(t => t.Type is not (TokenType.Whitespace or TokenType.Newline))
-                .Select(t => t.Value)),
+            RawTokensNode rt => EmitRawTokens(rt.Tokens),
             _ => engine.Format(node, indent)
         };
+    }
+
+    /// <summary>
+    /// Joins raw tokens with smart spacing (no space around '(' ')' ',' '.', one space
+    /// after ','), lowercasing keywords and function names (identifier immediately before
+    /// '('). Whitespace/newline tokens are ignored. Shared by raw statements (RawTokensRule)
+    /// and window/OVER specs so both render "order by a.[Id]" rather than "ORDER BY a . [Id]".
+    /// </summary>
+    public static string EmitRawTokens(IEnumerable<Token> tokens)
+    {
+        var toks = tokens
+            .Where(t => t.Type is not (TokenType.Whitespace or TokenType.Newline))
+            .ToList();
+
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < toks.Count; i++)
+        {
+            var t = toks[i];
+
+            bool isFunction = t.Type == TokenType.Identifier
+                && i + 1 < toks.Count && toks[i + 1].Type == TokenType.LeftParen;
+            string val = t.Type == TokenType.Keyword || isFunction ? t.Value.ToLowerInvariant() : t.Value;
+
+            if (i > 0)
+            {
+                var prev = toks[i - 1];
+                bool noSpaceBefore = t.Type is TokenType.LeftParen or TokenType.RightParen
+                                            or TokenType.Comma or TokenType.Dot;
+                if (prev.Type == TokenType.Comma)                              sb.Append(' ');  // "a, b"
+                else if (noSpaceBefore)                                        { }               // before ( ) , .
+                else if (prev.Type is TokenType.LeftParen or TokenType.Dot)    { }               // after ( or .
+                else                                                           sb.Append(' ');   // normal gap
+            }
+            sb.Append(val);
+        }
+        return sb.ToString();
     }
 
     private static string EmitLiteral(LiteralNode l, int indent = 0)
