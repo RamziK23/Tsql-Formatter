@@ -8,8 +8,7 @@ namespace TsqlFormatter.Rules
 /// <summary>
 /// Rule 2.14: CREATE TABLE and DROP TABLE formatting.
 ///
-/// create table #name
-/// (
+/// create table #name (
 ///     col1 varchar(255),
 ///     col2 int
 /// )
@@ -32,8 +31,8 @@ public sealed class CreateTableRule : IFormatterRule
 
         var ct = (CreateTableNode)node;
         var sb = new StringBuilder();
-        sb.Append($"{tabs}create table {ct.TableName}\n");
-        sb.Append($"{tabs}(\n");
+        // Opening paren stays on the same line as the table name (matches compact source).
+        sb.Append($"{tabs}create table {ct.TableName} (\n");
 
         for (int i = 0; i < ct.Columns.Count; i++)
         {

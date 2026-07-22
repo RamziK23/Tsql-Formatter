@@ -31,6 +31,7 @@ public sealed class Parser
         while (!IsAtEnd())
         {
             bool hadSemicolon = false;
+            int newlinesBefore = 0;
             // Consume leading separators. Each GO keyword emits its OWN separator node,
             // so consecutive GO batch separators are preserved rather than collapsed to one.
             while (!IsAtEnd())
@@ -38,7 +39,9 @@ public sealed class Parser
                 var raw = PeekRaw();
                 if (raw.Type == TokenType.Semicolon)
                     { hadSemicolon = true; AdvanceRaw(); continue; }
-                if (raw.Type is TokenType.Whitespace or TokenType.Newline)
+                if (raw.Type == TokenType.Newline)
+                    { newlinesBefore++; AdvanceRaw(); continue; }
+                if (raw.Type == TokenType.Whitespace)
                     { AdvanceRaw(); continue; }
                 if (IsGoKeyword())
                 {
@@ -63,6 +66,9 @@ public sealed class Parser
             var stmt = ParseStatement();
             if (stmt != null)
             {
+                // Preserve a blank line that existed before this statement in the source.
+                if (newlinesBefore >= 2 && script.Statements.Count > 0)
+                    stmt.BlankLineBefore = true;
                 // A -- comment on the SAME line as the statement's end is a trailing comment
                 // for THIS statement — keep it attached here rather than letting it migrate
                 // to the following statement as a standalone comment.
@@ -1281,7 +1287,8 @@ public sealed class Parser
                 if (defTokens.Length > 0 && raw.Type == TokenType.Comma && depth > 0)
                     defTokens.Append(", ");         // "decimal(18, 2)" — space after comma in type
                 else
-                    defTokens.Append(raw.Value);
+                    // Type/constraint keywords (int, varchar, not, null, default ...) lowercased.
+                    defTokens.Append(raw.Type == TokenType.Keyword ? raw.Value.ToLowerInvariant() : raw.Value);
                 _pos++;
             }
 
@@ -1388,13 +1395,15 @@ public sealed class Parser
         var comments = new List<string>();
         while (true)
         {
-            // Skip whitespace/newlines without consuming meaningful tokens.
-            while (_pos < _tokens.Count && Skippable.Contains(_tokens[_pos].Type)) _pos++;
-            if (_pos < _tokens.Count &&
-                (_tokens[_pos].Type == TokenType.LineComment || _tokens[_pos].Type == TokenType.BlockComment))
+            // Look past whitespace/newlines WITHOUT consuming them, so a run with no comment
+            // leaves the separators intact (blank-line detection upstream depends on it).
+            int i = _pos;
+            while (i < _tokens.Count && Skippable.Contains(_tokens[i].Type)) i++;
+            if (i < _tokens.Count &&
+                (_tokens[i].Type == TokenType.LineComment || _tokens[i].Type == TokenType.BlockComment))
             {
-                comments.Add(_tokens[_pos].Value);
-                _pos++;
+                comments.Add(_tokens[i].Value);
+                _pos = i + 1;
             }
             else break;
         }

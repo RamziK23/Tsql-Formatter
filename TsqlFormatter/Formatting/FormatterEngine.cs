@@ -65,10 +65,14 @@ public sealed class FormatterEngine
 
     public string FormatScript(ScriptNode script)
     {
-        var parts = new List<string>();
+        // Each part carries whether a blank line should precede it, so the original
+        // blank-line structure between statements is preserved instead of forced.
+        var parts = new List<(string text, bool blank)>();
         bool isFirst = true;
+        bool prevWasGo = false;
         string? pendingComment = null;  // a standalone comment awaiting the next statement
         string pendingSep = "\n";       // separator between the pending comment and next statement
+        bool pendingBlank = false;      // blank line before the pending comment block
 
         foreach (var stmt in script.Statements)
         {
@@ -87,6 +91,7 @@ public sealed class FormatterEngine
                 {
                     pendingComment = formatted;
                     pendingSep = sep;
+                    pendingBlank = raw.BlankBefore;
                 }
                 else
                 {
@@ -100,25 +105,40 @@ public sealed class FormatterEngine
             if (stmt.StatementTrailingComment != null)
                 formatted = AppendTrailingComment(formatted, stmt.StatementTrailingComment);
 
+            bool blankBefore;
             if (pendingComment != null)
             {
                 formatted = pendingComment + pendingSep + formatted;
+                blankBefore = pendingBlank;
                 pendingComment = null;
             }
+            else
+            {
+                blankBefore = stmt.BlankLineBefore;
+            }
+
+            // GO batch separators always sit on their own blank-line-separated line.
+            if (prevWasGo || stmt is GoSeparatorNode) blankBefore = true;
 
             // Restore leading semicolon before the first statement (e.g. ;with ...)
             if (isFirst && script.HasLeadingSemicolon)
                 formatted = ";" + formatted;
 
-            parts.Add(formatted);
+            parts.Add((formatted, blankBefore));
             isFirst = false;
+            prevWasGo = stmt is GoSeparatorNode;
         }
 
         // A trailing comment with no following statement stands on its own.
-        if (pendingComment != null) parts.Add(pendingComment);
+        if (pendingComment != null) parts.Add((pendingComment, prevWasGo || pendingBlank));
 
-        // GO separators are emitted verbatim (one per GO); consecutive GOs are preserved.
-        return string.Join("\n\n", parts) + "\n";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            if (i > 0) sb.Append(parts[i].blank ? "\n\n" : "\n");
+            sb.Append(parts[i].text);
+        }
+        return sb.ToString() + "\n";
     }
 }
 

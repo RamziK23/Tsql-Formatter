@@ -144,7 +144,7 @@ public static class TestCases
         new TestCase {
             Rule = "2.13", Name = "multiline dynamic sql reindented +1 tab, closing quote at declaring indent",
             Input    = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from '+b.dbName+'.dbo.contract'+b.suffix+'\n' from webcar.dbo.billing as b",
-            Expected = "declare @s varchar(max) = ''\n\nselect @s = @s + '\n\tselect\n\t    id,\n\t    title\n\tfrom ' + b.dbName + '.dbo.contract' + b.suffix + '\n'\nfrom webcar.dbo.billing as b",
+            Expected = "declare @s varchar(max) = ''\nselect @s = @s + '\n\tselect\n\t    id,\n\t    title\n\tfrom ' + b.dbName + '.dbo.contract' + b.suffix + '\n'\nfrom webcar.dbo.billing as b",
         },
 
         // ── 2.4 subquery in IN ────────────────────────────────────────────────
@@ -315,7 +315,7 @@ public static class TestCases
         new TestCase {
             Rule = "comments", Name = "trailing -- comment stays on its original line, not moved to next statement",
             Input    = "select a from t1  -- comment about t1\nselect b from t2",
-            Expected = "select a\nfrom t1\t\t-- comment about t1\n\nselect b\nfrom t2",
+            Expected = "select a\nfrom t1\t\t-- comment about t1\nselect b\nfrom t2",
         },
         new TestCase {
             Rule = "comments", Name = "trailing -- comment on last statement kept on its line",
@@ -505,6 +505,30 @@ public static class TestCases
             Rule = "aggdistinct", Name = "count distinct case breaks onto lines",
             Input    = "select count(distinct case when x is not null then id end) as c from t",
             Expected = "select count(\n\tdistinct case\n\t\twhen x is not null\n\t\tthen id\n\tend\n) as c\nfrom t",
+        },
+
+        // ── blank-line preservation between statements ────────────────────────
+        new TestCase {
+            Rule = "blanklines", Name = "no blank line added between statements when source has none",
+            Input    = "select 1 from t\nselect 2 from t",
+            Expected = "select 1\nfrom t\nselect 2\nfrom t",
+        },
+        new TestCase {
+            Rule = "blanklines", Name = "blank line between statements preserved when present in source",
+            Input    = "select 1 from t\n\nselect 2 from t",
+            Expected = "select 1\nfrom t\n\nselect 2\nfrom t",
+        },
+
+        // ── CREATE TABLE: same-line paren, lowercased types ───────────────────
+        new TestCase {
+            Rule = "2.14", Name = "create table: opening paren on name line, types lowercased",
+            Input    = "CREATE TABLE #x(\n\tprocess INT,\n\tprocess_status_id INT\n)",
+            Expected = "create table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "if object_id drop/create kept compact and lowercased",
+            Input    = "IF OBJECT_ID('TempDb..#x') is not null DROP TABLE #x\nCREATE TABLE #x(\n\tprocess INT,\n\tprocess_status_id INT\n)",
+            Expected = "if object_id('TempDb..#x') is not null\ndrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
     };
 }

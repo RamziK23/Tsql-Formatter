@@ -14,6 +14,13 @@ public abstract class AstNode
     /// to the following statement. Rendered by FormatScript on the statement's last line.
     /// </summary>
     public string? StatementTrailingComment { get; set; }
+
+    /// <summary>
+    /// True when the source had a blank line (2+ newlines) before this statement.
+    /// FormatScript uses it to preserve the original blank-line structure between
+    /// statements instead of always forcing one.
+    /// </summary>
+    public bool BlankLineBefore { get; set; }
 }
 
 // ─── Script root ─────────────────────────────────────────────────────────────
