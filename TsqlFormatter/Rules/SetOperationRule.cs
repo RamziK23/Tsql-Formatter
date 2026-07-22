@@ -29,7 +29,10 @@ public sealed class SetOperationRule : IFormatterRule
         if (node is SetOperationNode set)
         {
             Flatten(set.Left, engine, indent, parts);
+            // A blank line precedes and follows the set operator keyword.
+            parts.Add("");
             parts.Add(RuleHelpers.Tabs(indent) + set.Operator.ToLowerInvariant());
+            parts.Add("");
             parts.Add(engine.Format(set.Right, indent));
         }
         else

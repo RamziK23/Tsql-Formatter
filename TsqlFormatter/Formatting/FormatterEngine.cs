@@ -43,6 +43,16 @@ public sealed class FormatterEngine
         return $"/* unhandled: {node.GetType().Name} */";
     }
 
+    /// <summary>Appends a trailing -- comment to the last line of already-formatted text,
+    /// using the two-tab gap convention shared with column/where trailing comments.</summary>
+    private static string AppendTrailingComment(string text, string comment)
+    {
+        int nl = text.LastIndexOf('\n');
+        return nl < 0
+            ? text + "\t\t" + comment
+            : text.Substring(0, nl + 1) + text.Substring(nl + 1) + "\t\t" + comment;
+    }
+
     /// <summary>True if the node is a standalone comment (a RawTokensNode of only comment tokens).</summary>
     private static bool IsCommentOnly(AstNode node)
     {
@@ -86,6 +96,10 @@ public sealed class FormatterEngine
                 continue;
             }
 
+            // A same-line trailing -- comment sticks to the statement's last line.
+            if (stmt.StatementTrailingComment != null)
+                formatted = AppendTrailingComment(formatted, stmt.StatementTrailingComment);
+
             if (pendingComment != null)
             {
                 formatted = pendingComment + pendingSep + formatted;
@@ -103,20 +117,7 @@ public sealed class FormatterEngine
         // A trailing comment with no following statement stands on its own.
         if (pendingComment != null) parts.Add(pendingComment);
 
-        // Ensure the script ends with exactly one GO if the last real node was a GoSeparatorNode
-        // (trailing GO(s) in the source collapse to one)
-        var lastMeaningful = script.Statements.LastOrDefault(s => s is not GoSeparatorNode);
-        bool trailingGo = script.Statements.Count > 0
-            && script.Statements[^1] is GoSeparatorNode;
-
-        // Remove any trailing GO entries from parts (they were emitted as "GO")
-        // and re-add exactly one if the source had trailing GOs
-        while (parts.Count > 0 && parts[^1] == "GO")
-            parts.RemoveAt(parts.Count - 1);
-
-        if (trailingGo)
-            parts.Add("GO");
-
+        // GO separators are emitted verbatim (one per GO); consecutive GOs are preserved.
         return string.Join("\n\n", parts) + "\n";
     }
 }

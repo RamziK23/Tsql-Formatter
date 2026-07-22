@@ -30,8 +30,9 @@ public sealed class Parser
 
         while (!IsAtEnd())
         {
-            bool hadGo = false;
             bool hadSemicolon = false;
+            // Consume leading separators. Each GO keyword emits its OWN separator node,
+            // so consecutive GO batch separators are preserved rather than collapsed to one.
             while (!IsAtEnd())
             {
                 var raw = PeekRaw();
@@ -40,21 +41,19 @@ public sealed class Parser
                 if (raw.Type is TokenType.Whitespace or TokenType.Newline)
                     { AdvanceRaw(); continue; }
                 if (IsGoKeyword())
-                    { hadGo = true; AdvanceRaw(); continue; }
+                {
+                    AdvanceRaw();
+                    // A GO before any statement is meaningless — drop it.
+                    if (script.Statements.Count > 0)
+                        script.Statements.Add(new GoSeparatorNode());
+                    continue;
+                }
                 break;
             }
 
-            // Trailing GO(s) at end of file — collapse to one and stop
+            // Only trailing separators remained — stop.
             if (IsAtEnd())
-            {
-                if (hadGo && script.Statements.Count > 0)
-                    script.Statements.Add(new GoSeparatorNode());
                 break;
-            }
-
-            // Deduplicated GO separator between statements
-            if (hadGo && script.Statements.Count > 0)
-                script.Statements.Add(new GoSeparatorNode());
 
             // Leading semicolon before first statement (e.g. ;with ...)
             if (isFirstStatement && hadSemicolon)
@@ -62,7 +61,15 @@ public sealed class Parser
             isFirstStatement = false;
 
             var stmt = ParseStatement();
-            if (stmt != null) script.Statements.Add(stmt);
+            if (stmt != null)
+            {
+                // A -- comment on the SAME line as the statement's end is a trailing comment
+                // for THIS statement — keep it attached here rather than letting it migrate
+                // to the following statement as a standalone comment.
+                var trailing = TryTakeSameLineComment();
+                if (trailing != null) stmt.StatementTrailingComment = trailing;
+                script.Statements.Add(stmt);
+            }
         }
         return script;
     }
@@ -349,7 +356,12 @@ public sealed class Parser
         if (Peek().IsKeyword("FROM"))
         {
             Advance();
-            node.FromClauses.Add(ParseTableRef());
+            var fromTable = ParseTableRef();
+            node.FromClauses.Add(fromTable);
+            // A -- comment on the SAME line as the FROM table stays attached to that line
+            // (rather than migrating to a PostFromComment or the following statement).
+            var fromTrailing = TryTakeSameLineComment();
+            if (fromTrailing != null) fromTable.TrailingComment = fromTrailing;
             // Collect joins, tolerating standalone comments between FROM and each JOIN.
             while (true)
             {

@@ -6,7 +6,15 @@ namespace TsqlFormatter.Core
 
 // ─── Base ────────────────────────────────────────────────────────────────────
 
-public abstract class AstNode { }
+public abstract class AstNode
+{
+    /// <summary>
+    /// A -- line comment that trailed this statement on the SAME line as its last token.
+    /// Kept here so the comment stays attached to its original line instead of migrating
+    /// to the following statement. Rendered by FormatScript on the statement's last line.
+    /// </summary>
+    public string? StatementTrailingComment { get; set; }
+}
 
 // ─── Script root ─────────────────────────────────────────────────────────────
 
@@ -123,6 +131,8 @@ public sealed class TableRefNode : AstNode
     public List<Token> Name { get; } = new();
     public Token? Alias { get; init; }
     public string? HintNolock { get; init; }
+    /// <summary>A -- comment on the same line as this table reference in a FROM clause.</summary>
+    public string? TrailingComment { get; set; }
     /// <summary>Subquery used as a table source: (SELECT ...) AS alias</summary>
     public SubQueryNode? SubQuery { get; init; }
     /// <summary>Arguments for function-valued table sources: func(arg1, arg2) AS alias</summary>

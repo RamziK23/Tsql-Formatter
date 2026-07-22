@@ -46,9 +46,14 @@ public static class TestCases
 
         // ── 2.11 set operations ───────────────────────────────────────────────
         new TestCase {
-            Rule = "2.11", Name = "union all",
+            Rule = "2.11", Name = "union all: blank line before and after operator",
             Input    = "select a from t1 union all select a from t2",
-            Expected = "select a\nfrom t1\nunion all\nselect a\nfrom t2",
+            Expected = "select a\nfrom t1\n\nunion all\n\nselect a\nfrom t2",
+        },
+        new TestCase {
+            Rule = "2.11", Name = "intersect / except chain: blank line around each operator",
+            Input    = "select a from t1 intersect select a from t2 except select a from t3",
+            Expected = "select a\nfrom t1\n\nintersect\n\nselect a\nfrom t2\n\nexcept\n\nselect a\nfrom t3",
         },
 
         // ── 2.12 insert ───────────────────────────────────────────────────────
@@ -308,9 +313,29 @@ public static class TestCases
             Expected = "-- header\nselect a\nfrom t",
         },
         new TestCase {
+            Rule = "comments", Name = "trailing -- comment stays on its original line, not moved to next statement",
+            Input    = "select a from t1  -- comment about t1\nselect b from t2",
+            Expected = "select a\nfrom t1\t\t-- comment about t1\n\nselect b\nfrom t2",
+        },
+        new TestCase {
+            Rule = "comments", Name = "trailing -- comment on last statement kept on its line",
+            Input    = "select a from t1  -- trailing note",
+            Expected = "select a\nfrom t1\t\t-- trailing note",
+        },
+        new TestCase {
             Rule = "comments", Name = "comment after GO attaches to next statement",
             Input    = "select 1\nGO\n-- note\nselect 2 from t",
             Expected = "select 1\n\nGO\n\n-- note\nselect 2\nfrom t",
+        },
+        new TestCase {
+            Rule = "go", Name = "consecutive GO separators are preserved (not collapsed)",
+            Input    = "select 1\nGO\nGO\nselect 2 from t",
+            Expected = "select 1\n\nGO\n\nGO\n\nselect 2\nfrom t",
+        },
+        new TestCase {
+            Rule = "go", Name = "consecutive trailing GO preserved",
+            Input    = "select 1 from t\nGO\nGO",
+            Expected = "select 1\nfrom t\n\nGO\n\nGO",
         },
         new TestCase {
             Rule = "where-or", Name = "WHERE with OR does not add outer parens",

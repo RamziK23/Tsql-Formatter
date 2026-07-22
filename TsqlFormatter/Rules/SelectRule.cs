@@ -74,7 +74,12 @@ public sealed class SelectRule : IFormatterRule
                 if (clause is JoinNode join)
                     sb.Append(RuleHelpers.FormatJoin(join, engine, indent));
                 else if (clause is TableRefNode tref)
+                {
                     sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
+                    // A same-line -- comment stays on the FROM line.
+                    if (tref.TrailingComment != null)
+                        sb.Append($"{RuleHelpers.Tabs(2)}{tref.TrailingComment}");
+                }
             }
         }
 
