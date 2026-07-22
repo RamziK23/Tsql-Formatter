@@ -93,27 +93,26 @@ public sealed class FragmentRule : IFormatterRule
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new StringBuilder();
         sb.Append($"{tabs}group by");
-        if (g.Columns.Count == 1)
+        for (int i = 0; i < g.Columns.Count; i++)
         {
-            sb.Append($" {RuleHelpers.EmitExpr(g.Columns[0], engine, indent)}");
-        }
-        else
-        {
-            for (int i = 0; i < g.Columns.Count; i++)
-            {
-                sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(g.Columns[i], engine, indent + 1)}");
-                if (i < g.Columns.Count - 1) sb.Append(",");
-            }
+            sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(g.Columns[i], engine, indent + 1)}");
+            if (i < g.Columns.Count - 1) sb.Append(",");
         }
         return sb.ToString();
     }
 
-    // ── ORDER BY fragment — single line (matches SelectRule) ─────────────────
+    // ── ORDER BY fragment — each item on its own line (matches SelectRule) ────
     private static string FormatOrderBy(OrderByFragmentNode o, FormatterEngine engine, int indent)
     {
         var tabs = RuleHelpers.Tabs(indent);
-        var items = string.Join(", ", o.Items.Select(x => RuleHelpers.EmitExpr(x, engine, indent)));
-        return $"{tabs}order by {items}";
+        var sb   = new StringBuilder();
+        sb.Append($"{tabs}order by");
+        for (int i = 0; i < o.Items.Count; i++)
+        {
+            sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(o.Items[i], engine, indent + 1)}");
+            if (i < o.Items.Count - 1) sb.Append(",");
+        }
+        return sb.ToString();
     }
 }
 

@@ -39,30 +39,19 @@ public sealed class SelectRule : IFormatterRule
         if (sel.TopExpr != null) header.Append($" top {sel.TopExpr}");
 
         // ── Columns ───────────────────────────────────────────────────────────
-        if (sel.Columns.Count == 1)
+        // Every column goes on its own indented line (+1 tab), regardless of count.
+        sb.Append(header);
+        for (int i = 0; i < sel.Columns.Count; i++)
         {
-            var col = sel.Columns[0];
-            var colStr = RuleHelpers.EmitExpr(col.Expression, engine, indent);
-            var alias  = col.Alias != null ? $" as {col.Alias.Value}" : "";
+            var col     = sel.Columns[i];
+            var colStr  = RuleHelpers.EmitExpr(col.Expression, engine, indent + 1);
+            var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
+            var comma   = i < sel.Columns.Count - 1 ? "," : "";
+            // Rule 4.1.2: comma goes BEFORE the trailing comment, comment offset by 2 tabs
             var comment = col.TrailingComment != null ? $"{RuleHelpers.Tabs(2)}{col.TrailingComment}" : "";
+            // Leading block comment sits before the column expression
             var leading = col.LeadingComment != null ? $"{col.LeadingComment} " : "";
-            sb.Append($"{header} {leading}{colStr}{alias}{comment}");
-        }
-        else
-        {
-            sb.Append(header);
-            for (int i = 0; i < sel.Columns.Count; i++)
-            {
-                var col     = sel.Columns[i];
-                var colStr  = RuleHelpers.EmitExpr(col.Expression, engine, indent + 1);
-                var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
-                var comma   = i < sel.Columns.Count - 1 ? "," : "";
-                // Rule 4.1.2: comma goes BEFORE the trailing comment, comment offset by 2 tabs
-                var comment = col.TrailingComment != null ? $"{RuleHelpers.Tabs(2)}{col.TrailingComment}" : "";
-                // Leading block comment sits before the column expression
-                var leading = col.LeadingComment != null ? $"{col.LeadingComment} " : "";
-                sb.Append($"\n{tabs}\t{leading}{colStr}{alias}{comma}{comment}");
-            }
+            sb.Append($"\n{tabs}\t{leading}{colStr}{alias}{comma}{comment}");
         }
 
         // ── FROM ──────────────────────────────────────────────────────────────
@@ -105,20 +94,14 @@ public sealed class SelectRule : IFormatterRule
         }
 
         // ── GROUP BY ──────────────────────────────────────────────────────────
+        // Every column on its own indented line, regardless of count.
         if (sel.GroupByColumns.Count > 0)
         {
             sb.Append($"\n{tabs}group by");
-            if (sel.GroupByColumns.Count == 1)
+            for (int gi = 0; gi < sel.GroupByColumns.Count; gi++)
             {
-                sb.Append($" {RuleHelpers.EmitExpr(sel.GroupByColumns[0], engine, indent)}");
-            }
-            else
-            {
-                for (int gi = 0; gi < sel.GroupByColumns.Count; gi++)
-                {
-                    sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(sel.GroupByColumns[gi], engine, indent + 1)}");
-                    if (gi < sel.GroupByColumns.Count - 1) sb.Append(",");
-                }
+                sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(sel.GroupByColumns[gi], engine, indent + 1)}");
+                if (gi < sel.GroupByColumns.Count - 1) sb.Append(",");
             }
         }
 
@@ -127,10 +110,15 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"\n{tabs}having {RuleHelpers.EmitExpr(havingCond.Expression, engine, indent)}");
 
         // ── ORDER BY ─────────────────────────────────────────────────────────
+        // Every item on its own indented line, regardless of count.
         if (sel.OrderByColumns.Count > 0)
         {
-            var orderStr = string.Join(", ", sel.OrderByColumns.Select(o => RuleHelpers.EmitExpr(o, engine, indent)));
-            sb.Append($"\n{tabs}order by {orderStr}");
+            sb.Append($"\n{tabs}order by");
+            for (int oi = 0; oi < sel.OrderByColumns.Count; oi++)
+            {
+                sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(sel.OrderByColumns[oi], engine, indent + 1)}");
+                if (oi < sel.OrderByColumns.Count - 1) sb.Append(",");
+            }
         }
 
         return sb.ToString();

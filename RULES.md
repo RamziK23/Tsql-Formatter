@@ -63,7 +63,8 @@ select
 -- вход
 select "core_contract"."id" from "core_contract"
 -- результат
-select "core_contract"."id"
+select
+	"core_contract"."id"
 from "core_contract"
 ```
 
@@ -71,8 +72,11 @@ from "core_contract"
 `1e-5`, отрицательные литералы `-1` не ломаются при лексинге.
 
 ```sql
--- вход → результат
+-- вход
 select 1e-5 as x
+-- результат
+select
+	1e-5 as x
 ```
 
 ---
@@ -87,9 +91,11 @@ select 1e-5 as x
 select 1 from t
 select 2 from t
 -- результат
-select 1
+select
+	1
 from t
-select 2
+select
+	2
 from t
 ```
 
@@ -103,13 +109,15 @@ GO
 GO
 select 2 from t
 -- результат
-select 1
+select
+	1
 
 GO
 
 GO
 
-select 2
+select
+	2
 from t
 ```
 
@@ -145,7 +153,8 @@ declare @z int
 select a from t
 -- результат
 -- header
-select a
+select
+	a
 from t
 ```
 
@@ -172,9 +181,11 @@ from t
 select a from t1  -- про t1
 select b from t2
 -- результат
-select a
+select
+	a
 from t1		-- про t1
-select b
+select
+	b
 from t2
 ```
 
@@ -185,7 +196,11 @@ from t2
 
 ## D. SELECT и список колонок
 
-### `2.1` — Несколько колонок, каждая на своей строке (+1 таб)
+> Принцип: **каждая** колонка `select` (а также каждый элемент `group by` и `order by`)
+> всегда переносится на свою строку с табуляцией — независимо от количества, даже если
+> колонка одна.
+
+### `2.1` — Колонки, каждая на своей строке (+1 таб)
 
 ```sql
 -- вход
@@ -198,13 +213,14 @@ select
 from t
 ```
 
-### `2.1.1` — Одна колонка остаётся на строке select
+### `2.1.1` — Одна колонка тоже на своей строке
 
 ```sql
 -- вход
 select a from t
 -- результат
-select a
+select
+	a
 from t
 ```
 
@@ -227,9 +243,11 @@ from t
 -- вход
 select top (10) with ties a from t order by a
 -- результат
-select top (10) with ties a
+select top (10) with ties
+	a
 from t
-order by a
+order by
+	a
 ```
 
 ---
@@ -259,7 +277,8 @@ from t
 -- вход
 select a from t with (nolock) where x = 1
 -- результат
-select a
+select
+	a
 from t with (nolock)
 where x = 1
 ```
@@ -270,9 +289,11 @@ where x = 1
 -- вход
 select x.a from (select a from t where b=1) as x
 -- результат
-select x.a
+select
+	x.a
 from (
-	select a
+	select
+		a
 	from t
 	where b = 1
 ) as x
@@ -284,7 +305,8 @@ from (
 -- вход
 select w.* from openquery(srv, 'select id from t') as w
 -- результат
-select w.*
+select
+	w.*
 from openquery(
 	srv,
 	'select id from t'
@@ -304,7 +326,8 @@ from openquery(
 -- вход
 select * from t where a=1 or b=2
 -- результат
-select *
+select
+	*
 from t
 where
 	a = 1
@@ -333,10 +356,12 @@ where
 -- вход
 select * from t where id in (select id from u where u.x=1)
 -- результат
-select *
+select
+	*
 from t
 where id in (
-	select id
+	select
+		id
 	from u
 	where u.x = 1
 )
@@ -346,7 +371,7 @@ where id in (
 
 ## G. GROUP BY / HAVING / ORDER BY
 
-### `fragment` — GROUP BY: одна колонка inline, несколько — по строкам
+### `fragment` — GROUP BY: каждая колонка на своей строке (даже одна)
 
 ```sql
 -- вход
@@ -358,15 +383,18 @@ group by
 	p.[FirstName]
 ```
 
-### `orderby` — ORDER BY в одну строку; ASC/DESC сохраняются; HAVING поддержан
+### `orderby` — ORDER BY: каждый элемент на своей строке (даже один); ASC/DESC сохраняются; HAVING поддержан
 
 ```sql
 -- вход
 select a from t order by a desc, b asc
 -- результат
-select a
+select
+	a
 from t
-order by a desc, b asc
+order by
+	a desc,
+	b asc
 ```
 
 ---
@@ -406,7 +434,8 @@ from t
 -- вход
 select row_number() OVER (ORDER BY a.[Id]) as [Rn] from t
 -- результат
-select row_number() over (order by a.[Id]) as [Rn]
+select
+	row_number() over (order by a.[Id]) as [Rn]
 from t
 ```
 
@@ -416,7 +445,8 @@ from t
 -- вход
 select webcar.dbo.datafirst(@yy, @mm) as d from t
 -- результат
-select webcar.dbo.datafirst(@yy, @mm) as d
+select
+	webcar.dbo.datafirst(@yy, @mm) as d
 from t
 ```
 
@@ -426,11 +456,12 @@ from t
 -- вход
 select case when a=1 then 'one' else 'other' end as l from t
 -- результат
-select case
-	when a = 1
-	then 'one'
-	else 'other'
-end as l
+select
+	case
+		when a = 1
+		then 'one'
+		else 'other'
+	end as l
 from t
 ```
 
@@ -522,11 +553,13 @@ WITH cte AS (SELECT s.[Id] FROM [dbo].[Src] s WHERE s.[Val]>0)
 SELECT c.[Id] FROM cte c
 -- результат
 with cte as (
-	select s.[Id]
+	select
+		s.[Id]
 	from [dbo].[Src] as s
 	where s.[Val] > 0
 )
-select c.[Id]
+select
+	c.[Id]
 from cte as c
 ```
 
@@ -558,12 +591,14 @@ end
 -- вход
 select a from t1 union all select a from t2
 -- результат
-select a
+select
+	a
 from t1
 
 union all
 
-select a
+select
+	a
 from t2
 ```
 
