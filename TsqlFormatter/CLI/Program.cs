@@ -1,45 +1,43 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using TsqlFormatter.Core;
 using TsqlFormatter.Formatting;
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-// ── Mode: --clipboard ─────────────────────────────────────────────────────────
-// Reads SQL from the Windows clipboard, formats it, writes the result back.
-// No PowerShell required — works in any corporate environment.
+// ── Mode: --auto  (recommended for SSMS) ──────────────────────────────────────
+// Formats the current editor SELECTION in place: copies it, formats it, pastes it
+// back — one hotkey, no manual Ctrl+C / Ctrl+V, no messages, no window.
 //
-// SSMS External Tools setup:
-//   Title:     Format Selection (clipboard)
+// SSMS External Tools setup (Tools ▸ External Tools ▸ Add):
+//   Title:     Format SQL
 //   Command:   C:\Tools\TsqlFormatter\TsqlFormatter.exe
-//   Arguments: --clipboard
-//   ✅ Use Output window
+//   Arguments: --auto
+//   [ ] Use Output window      ← leave UNCHECKED (no messages / no pane)
+//   [ ] Prompt for arguments   ← unchecked
+// Then Tools ▸ Options ▸ Environment ▸ Keyboard, bind "Tools.ExternalCommand<N>"
+// (N = position in the External Tools list) to a hotkey.
 //
-// Usage: select SQL → Ctrl+C → run tool → Ctrl+V
+// Usage: select SQL → press the hotkey → formatted SQL replaces the selection.
+if (args.Length == 1 && (args[0] == "--auto" || args[0] == "--format"))
+    return AutoFormat.Run();
+
+// ── Mode: --clipboard ─────────────────────────────────────────────────────────
+// Formats whatever text is on the clipboard, in place, silently (copy → run → paste).
 if (args.Length == 1 && args[0] == "--clipboard")
 {
     try
     {
         var source = WinClipboard.GetText();
-        if (string.IsNullOrWhiteSpace(source))
-        {
-            Console.WriteLine("Clipboard is empty — copy your SQL selection first.");
-            return 0;
-        }
-
-        var result = FormatterEngine.FormatSource(source);
-
-        WinClipboard.SetText(result);
-        Console.WriteLine("Done — paste with Ctrl+V");
+        if (!string.IsNullOrWhiteSpace(source))
+            WinClipboard.SetText(FormatterEngine.FormatSource(source));
         return 0;
     }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine("Clipboard error: " + ex.Message);
-        return 3;
-    }
+    catch { return 3; }
 }
 
 // ── Mode: --stdin ─────────────────────────────────────────────────────────────
@@ -59,9 +57,10 @@ var filePath = args.Length > 0 ? args[0] : null;
 if (filePath == null)
 {
     Console.Error.WriteLine("Usage:");
-    Console.Error.WriteLine("  TsqlFormatter.exe <file.sql>   — format file in-place");
-    Console.Error.WriteLine("  TsqlFormatter.exe --stdin      — read from stdin, write to stdout");
-    Console.Error.WriteLine("  TsqlFormatter.exe --clipboard  — format clipboard (no PowerShell needed)");
+    Console.Error.WriteLine("  TsqlFormatter.exe --auto        — format the current editor selection in place (SSMS)");
+    Console.Error.WriteLine("  TsqlFormatter.exe --clipboard   — format the clipboard in place");
+    Console.Error.WriteLine("  TsqlFormatter.exe --stdin       — read from stdin, write to stdout");
+    Console.Error.WriteLine("  TsqlFormatter.exe <file.sql>    — format file in-place");
     return 1;
 }
 if (!File.Exists(filePath))
@@ -137,5 +136,85 @@ static class WinClipboard
         if (!OpenClipboard(IntPtr.Zero)) { GlobalFree(h); throw new InvalidOperationException("OpenClipboard failed"); }
         try   { EmptyClipboard(); SetClipboardData(CF_UNICODETEXT, h); }
         finally { CloseClipboard(); }
+    }
+}
+
+// ─── Selection auto-format: synthesize Ctrl+C / Ctrl+V around the formatter ───
+// The tool has no access to the editor's selection, so it drives the clipboard with
+// synthetic keystrokes: copy the selection, format it, paste it back. Fully silent —
+// on any problem (nothing selected, parse error) it does nothing and leaves the text.
+static class AutoFormat
+{
+    private const byte VK_CONTROL = 0x11, VK_C = 0x43, VK_V = 0x56;
+    private const int  VK_SHIFT = 0x10, VK_MENU = 0x12, VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    [DllImport("user32.dll")] private static extern void  keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+    [DllImport("user32.dll")] private static extern uint  GetClipboardSequenceNumber();
+
+    public static int Run()
+    {
+        try
+        {
+            // The tool is launched by a Ctrl-based hotkey; wait for the user to release
+            // the modifier keys so our synthetic Ctrl+C / Ctrl+V aren't combined with them.
+            WaitModifiersReleased(700);
+
+            uint seq = GetClipboardSequenceNumber();
+            SendCtrl(VK_C);                                   // copy the current selection
+            var source = WaitClipboardChanged(seq, 1500);
+            if (string.IsNullOrWhiteSpace(source)) return 0;  // nothing selected — do nothing
+
+            string result;
+            try   { result = FormatterEngine.FormatSource(source); }
+            catch { return 0; }                               // never overwrite with garbage
+
+            WinClipboard.SetText(result);
+            Thread.Sleep(40);
+            SendCtrl(VK_V);                                   // paste over the selection
+            Thread.Sleep(40);
+            return 0;
+        }
+        catch { return 0; }
+    }
+
+    /// <summary>Waits until the copy raises the clipboard sequence number, then returns its text.</summary>
+    private static string WaitClipboardChanged(uint prevSeq, int timeoutMs)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (GetClipboardSequenceNumber() != prevSeq)
+            {
+                var text = WinClipboard.GetText();
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            Thread.Sleep(20);
+        }
+        return string.Empty;
+    }
+
+    /// <summary>Blocks until Ctrl/Shift/Alt/Win are all up (or the timeout elapses).</summary>
+    private static void WaitModifiersReleased(int timeoutMs)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            bool down = IsDown(VK_CONTROL) || IsDown(VK_SHIFT) || IsDown(VK_MENU)
+                     || IsDown(VK_LWIN)    || IsDown(VK_RWIN);
+            if (!down) { Thread.Sleep(30); return; }          // small settle after release
+            Thread.Sleep(15);
+        }
+    }
+
+    private static bool IsDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    private static void SendCtrl(byte vk)
+    {
+        keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 }

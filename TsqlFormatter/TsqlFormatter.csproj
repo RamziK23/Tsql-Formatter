@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- WinExe: no console window flashes when launched from an SSMS External Tool. -->
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net5.0</TargetFramework>
     <AssemblyName>TsqlFormatter</AssemblyName>
     <RootNamespace>TsqlFormatter</RootNamespace>
