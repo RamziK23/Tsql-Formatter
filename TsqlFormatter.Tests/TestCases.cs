@@ -87,7 +87,7 @@ public static class TestCases
         new TestCase {
             Rule = "2.15", Name = "declare: decimal(18, 2) spacing",
             Input    = "declare @m decimal(18,2)",
-            Expected = "declare @m decimal(18, 2)",
+            Expected = "declare\n\t@m decimal(18, 2)",
         },
         new TestCase {
             Rule = "2.15", Name = "window function: space before over (",
@@ -129,7 +129,7 @@ public static class TestCases
         new TestCase {
             Rule = "stmtbound", Name = "assignment select column list ends at DECLARE",
             Input    = "select @yy=2026,@mm=6\ndeclare @z int",
-            Expected = "select\n\t@yy = 2026,\n\t@mm = 6\ndeclare @z int",
+            Expected = "select\n\t@yy = 2026,\n\t@mm = 6\ndeclare\n\t@z int",
         },
         new TestCase {
             Rule = "stmtbound", Name = "assignment select column list ends at EXEC",
@@ -191,7 +191,7 @@ public static class TestCases
         new TestCase {
             Rule = "2.13", Name = "multiline dynamic sql reindented +1 tab, closing quote at declaring indent",
             Input    = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from '+b.dbName+'.dbo.contract'+b.suffix+'\n' from webcar.dbo.billing as b",
-            Expected = "declare @s varchar(max) = ''\nselect\n\t@s = @s + '\n\t\tselect\n\t\t    id,\n\t\t    title\n\t\tfrom ' + b.dbName + '.dbo.contract' + b.suffix + '\n\t'\nfrom webcar.dbo.billing as b",
+            Expected = "declare\n\t@s varchar(max) = ''\nselect\n\t@s = @s + '\n\t\tselect\n\t\t    id,\n\t\t    title\n\t\tfrom ' + b.dbName + '.dbo.contract' + b.suffix + '\n\t'\nfrom webcar.dbo.billing as b",
         },
 
         // ── 2.4 subquery in IN ────────────────────────────────────────────────
@@ -446,19 +446,19 @@ public static class TestCases
 
         // ── declare + comment edge cases (тест2/тест3) ────────────────────────
         new TestCase {
-            Rule = "declare", Name = "single variable stays on declare line",
+            Rule = "declare", Name = "single variable on its own indented line",
             Input    = "declare @be int = 1",
-            Expected = "declare @be int = 1",
+            Expected = "declare\n\t@be int = 1",
         },
         new TestCase {
             Rule = "declare", Name = "comment glued to value (1--test2)",
             Input    = "declare @be int = 1--test2",
-            Expected = "declare @be int = 1\t\t--test2",
+            Expected = "declare\n\t@be int = 1\t\t--test2",
         },
         new TestCase {
             Rule = "declare", Name = "standalone comment before declare",
             Input    = "--test\ndeclare @be int = 1",
-            Expected = "--test\ndeclare @be int = 1",
+            Expected = "--test\ndeclare\n\t@be int = 1",
         },
         new TestCase {
             Rule = "declare", Name = "exponent literal not broken by number lexing",
@@ -468,12 +468,12 @@ public static class TestCases
         new TestCase {
             Rule = "begincomment", Name = "comment attaches to declare inside begin/end",
             Input    = "begin\n\n--test\ndeclare @be int = 1--test2\n\ndeclare @b2e int = 1,\n@dt varchar(255) = ''\n\nend",
-            Expected = "begin\n\n\t--test\n\tdeclare @be int = 1\t\t--test2\n\n\tdeclare\n\t\t@b2e int = 1,\n\t\t@dt varchar(255) = ''\n\nend",
+            Expected = "begin\n\n\t--test\n\tdeclare\n\t\t@be int = 1\t\t--test2\n\n\tdeclare\n\t\t@b2e int = 1,\n\t\t@dt varchar(255) = ''\n\nend",
         },
         new TestCase {
             Rule = "declarecomment", Name = "leading comment + declare with glued trailing comment (top level)",
             Input    = "--test\ndeclare @be int = 1--test2\n\ndeclare @b2e int = 1,\n@dt varchar(255) = ''",
-            Expected = "--test\ndeclare @be int = 1\t\t--test2\n\ndeclare\n\t@b2e int = 1,\n\t@dt varchar(255) = ''",
+            Expected = "--test\ndeclare\n\t@be int = 1\t\t--test2\n\ndeclare\n\t@b2e int = 1,\n\t@dt varchar(255) = ''",
         },
         new TestCase {
             Rule = "nstring", Name = "N-prefixed unicode string literals kept intact",
