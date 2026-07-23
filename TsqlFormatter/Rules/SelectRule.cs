@@ -47,8 +47,9 @@ public sealed class SelectRule : IFormatterRule
             var colStr  = RuleHelpers.EmitExpr(col.Expression, engine, indent + 1);
             var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
             var comma   = i < sel.Columns.Count - 1 ? "," : "";
-            // Rule 4.1.2: comma goes BEFORE the trailing comment, comment offset by 2 tabs
-            var comment = col.TrailingComment != null ? $"{RuleHelpers.Tabs(2)}{col.TrailingComment}" : "";
+            // Rule 4.1.2: comma goes BEFORE the trailing comment. A -- comment is offset by
+            // two tabs; a /* */ block comment glues directly (transparent).
+            var comment = col.TrailingComment != null ? RuleHelpers.TrailingCommentSuffix(col.TrailingComment) : "";
             // Leading block comment sits before the column expression
             var leading = col.LeadingComment != null ? $"{col.LeadingComment} " : "";
             sb.Append($"\n{tabs}\t{leading}{colStr}{alias}{comma}{comment}");
@@ -80,17 +81,11 @@ public sealed class SelectRule : IFormatterRule
         var whereConds = sel.WhereConditions.Where(c => c is not ConditionNode cn || cn.LogicalOp != "having").ToList();
         var havingCond = sel.WhereConditions.OfType<ConditionNode>().FirstOrDefault(cn => cn.LogicalOp == "having");
 
+        // Every condition on its own indented line, even a single one.
         if (whereConds.Count > 0)
         {
             sb.Append($"\n{tabs}where");
-            if (whereConds.Count == 1 && whereConds[0] is ConditionNode sc && sc.LogicalOp == null
-                && sc.Expression is not ConditionGroupNode)
-            {
-                var cmt = sc.TrailingComment != null ? $" {sc.TrailingComment}" : "";
-                sb.Append($" {RuleHelpers.EmitExpr(sc.Expression, engine, indent)}{cmt}");
-            }
-            else
-                sb.Append($"\n{RuleHelpers.EmitConditions(whereConds, engine, indent + 1)}");
+            sb.Append($"\n{RuleHelpers.EmitConditions(whereConds, engine, indent + 1)}");
         }
 
         // ── GROUP BY ──────────────────────────────────────────────────────────

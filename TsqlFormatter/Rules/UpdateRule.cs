@@ -60,11 +60,9 @@ public sealed class UpdateRule : IFormatterRule
             }
             else
             {
+                // Every condition on its own indented line, even a single one.
                 sb.Append($"\n{tabs}where");
-                if (upd.WhereConditions.Count == 1 && upd.WhereConditions[0] is ConditionNode sc && sc.LogicalOp == null)
-                    sb.Append($" {RuleHelpers.EmitExpr(sc.Expression, engine, indent)}");
-                else
-                    sb.Append($"\n{RuleHelpers.EmitConditions(upd.WhereConditions, engine, indent + 1)}");
+                sb.Append($"\n{RuleHelpers.EmitConditions(upd.WhereConditions, engine, indent + 1)}");
             }
         }
 

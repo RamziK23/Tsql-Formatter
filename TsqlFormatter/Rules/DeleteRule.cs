@@ -60,11 +60,9 @@ public sealed class DeleteRule : IFormatterRule
             }
             else
             {
+                // Every condition on its own indented line, even a single one.
                 sb.Append($"\n{tabs}where");
-                if (del.WhereConditions.Count == 1 && del.WhereConditions[0] is ConditionNode sc && sc.LogicalOp == null)
-                    sb.Append($" {RuleHelpers.EmitExpr(sc.Expression, engine, indent)}");
-                else
-                    sb.Append($"\n{RuleHelpers.EmitConditions(del.WhereConditions, engine, indent + 1)}");
+                sb.Append($"\n{RuleHelpers.EmitConditions(del.WhereConditions, engine, indent + 1)}");
             }
         }
 

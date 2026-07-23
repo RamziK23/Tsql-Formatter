@@ -603,7 +603,8 @@ public sealed class Parser
             comment = TryTakeSameLineComment();
             if (PeekIs(TokenType.Comma)) Advance();
             // A trailing comment may also sit AFTER the comma on the same line: "a, --note"
-            if (comment == null) comment = TryTakeSameLineComment();
+            // or "a, /* note */". A block comment there is transparent — glued to this column.
+            if (comment == null) comment = TryTakeSameLineInlineComment();
             cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment, LeadingComment = leadingComment });
         }
         return cols;
@@ -971,146 +972,81 @@ public sealed class Parser
     }
 
     /// <summary>
-    /// Parses an IN list, grouping values that share a trailing -- comment or leading /* */ comment.
-    /// Rule 2.3.2.1: no comments → inline.
-    /// Rule 2.3.2.2: one value per comment → CommentedValueNode.
-    /// Rule 2.3.2.3: multiple values per comment → InValueGroupNode.
+    /// Parses an IN value list. /* */ block comments are transparent — each glues to the
+    /// preceding value and the list stays inline. A -- line comment attaches to the preceding
+    /// value as a CommentedValueNode, which breaks the list onto separate lines (rule 2.3.2).
     /// </summary>
     private List<AstNode> ParseInList()
     {
         var list = new List<AstNode>();
-
         while (!IsAtEnd())
         {
-            // Skip whitespace/newlines between groups
             while (_pos < _tokens.Count && _tokens[_pos].Type is TokenType.Whitespace or TokenType.Newline)
                 _pos++;
+            if (_pos >= _tokens.Count) break;
+            var t = _tokens[_pos].Type;
+            if (t == TokenType.RightParen) break;
+            if (t == TokenType.Comma) { _pos++; continue; }
+            // A /* */ block comment between values is transparent — glue it to the preceding value.
+            if (t == TokenType.BlockComment) { GlueInListBlockComment(list, _tokens[_pos++].Value); continue; }
+            // A -- line comment between values attaches to the preceding value (breaks the list).
+            if (t == TokenType.LineComment) { PromoteLastToCommented(list, _tokens[_pos++].Value); continue; }
 
-            if (PeekIs(TokenType.RightParen)) break;
+            // Parse a value.
+            var val = ParsePrimary();
+            // ParsePrimary may have captured a same-line -- comment on the value itself.
+            var lineComment = TakeLineCommentFrom(val);
 
-            // Leading block comment: /*ктв*/value1, value2
-            string? leadingBlock = null;
-            if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.BlockComment)
+            // A /* */ block comment glued right after the value stays attached to it, inline.
+            while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace) _pos++;
+            while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.BlockComment)
             {
-                leadingBlock = _tokens[_pos++].Value;
-                while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace)
-                    _pos++;
+                AttachGluedBlockComment(val, _tokens[_pos++].Value);
+                while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace) _pos++;
             }
 
-            if (PeekIs(TokenType.RightParen)) break;
-
-            // Parse first value of this potential group
-            var firstVal = ParsePrimary();
-
-            // Skip inline whitespace (not newline) after the value
-            while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace)
-                _pos++;
-
-            // Trailing comment immediately after value (before comma): value --comment
-            string? trailingComment = null;
-            if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.LineComment)
-            {
-                trailingComment = _tokens[_pos++].Value;
-                // Single value with comment
-                list.Add(leadingBlock != null
-                    ? (AstNode)BuildInGroup(new List<AstNode> { firstVal }, leadingBlock, trailingComment)
-                    : new CommentedValueNode { Value = firstVal, TrailingComment = trailingComment });
-                continue;
-            }
-
-            // Is there a comma? If not → last value, no group
-            if (_pos >= _tokens.Count || _tokens[_pos].Type != TokenType.Comma)
-            {
-                list.Add(leadingBlock != null
-                    ? (AstNode)BuildInGroup(new List<AstNode> { firstVal }, leadingBlock, null)
-                    : firstVal);
-                continue;
-            }
-
-            // Consume comma
-            _pos++;
-            while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace)
-                _pos++;
-
-            // Trailing comment after comma: value, --comment  → group ends here
-            if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.LineComment)
-            {
-                trailingComment = _tokens[_pos++].Value;
-                list.Add(leadingBlock != null
-                    ? (AstNode)BuildInGroup(new List<AstNode> { firstVal }, leadingBlock, trailingComment)
-                    : new CommentedValueNode { Value = firstVal, TrailingComment = trailingComment });
-                continue;
-            }
-
-            // Newline after comma without a comment → single value, no group
-            if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Newline)
-            {
-                list.Add(leadingBlock != null
-                    ? (AstNode)BuildInGroup(new List<AstNode> { firstVal }, leadingBlock, null)
-                    : firstVal);
-                continue;
-            }
-
-            // More values follow → accumulate into group
-            var groupVals = new List<AstNode> { firstVal };
-
-            while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
-            {
-                while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace)
-                    _pos++;
-
-                if (_pos >= _tokens.Count) break;
-                if (_tokens[_pos].Type is TokenType.Newline or TokenType.LineComment or TokenType.BlockComment) break;
-                if (PeekIs(TokenType.RightParen)) break;
-
-                var nextVal = ParsePrimary();
-                groupVals.Add(nextVal);
-
-                while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace)
-                    _pos++;
-
-                // Trailing comment after this value
-                if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.LineComment)
-                {
-                    trailingComment = _tokens[_pos++].Value;
-                    break;
-                }
-
-                // Comma → consume and check for group boundary
-                if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Comma)
-                {
-                    _pos++;
-                    while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace)
-                        _pos++;
-
-                    if (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.LineComment)
-                    {
-                        trailingComment = _tokens[_pos++].Value;
-                        break;
-                    }
-                    if (_pos < _tokens.Count && _tokens[_pos].Type is TokenType.Newline or TokenType.BlockComment)
-                        break;
-                }
-                else break;
-            }
-
-            // Build the result node
-            if (groupVals.Count == 1 && leadingBlock == null && trailingComment == null)
-                list.Add(groupVals[0]);
-            else if (groupVals.Count == 1 && leadingBlock == null)
-                list.Add(new CommentedValueNode { Value = groupVals[0], TrailingComment = trailingComment });
-            else
-                list.Add(BuildInGroup(groupVals, leadingBlock, trailingComment));
+            list.Add(lineComment != null
+                ? new CommentedValueNode { Value = val, TrailingComment = lineComment }
+                : val);
         }
-
         return list;
     }
 
-    private static InValueGroupNode BuildInGroup(List<AstNode> vals, string? leading, string? trailing)
+    /// <summary>Glues a transparent /* */ block comment onto the last parsed IN value.</summary>
+    private static void GlueInListBlockComment(List<AstNode> list, string blockComment)
     {
-        var g = new InValueGroupNode { LeadingBlockComment = leading, TrailingLineComment = trailing };
-        g.Values.AddRange(vals);
-        return g;
+        if (list.Count == 0) return;   // leading comment with no preceding value (rare) — dropped
+        AttachGluedBlockComment(list[^1] is CommentedValueNode cv ? cv.Value : list[^1], blockComment);
+    }
+
+    /// <summary>Appends a glued /* */ block comment to a value node that can carry a trailing comment.</summary>
+    private static void AttachGluedBlockComment(AstNode val, string blockComment)
+    {
+        switch (val)
+        {
+            case LiteralNode l:   l.TrailingComment = (l.TrailingComment ?? "") + blockComment; break;
+            case ColumnRefNode c: c.TrailingComment = (c.TrailingComment ?? "") + blockComment; break;
+            // other value kinds have no comment slot — the transparent comment is dropped (rare)
+        }
+    }
+
+    /// <summary>Extracts and clears a -- line comment captured on a value node (block comments stay).</summary>
+    private static string? TakeLineCommentFrom(AstNode val)
+    {
+        if (val is LiteralNode l && l.TrailingComment != null && l.TrailingComment.StartsWith("--"))
+        { var s = l.TrailingComment; l.TrailingComment = null; return s; }
+        if (val is ColumnRefNode c && c.TrailingComment != null && c.TrailingComment.StartsWith("--"))
+        { var s = c.TrailingComment; c.TrailingComment = null; return s; }
+        return null;
+    }
+
+    /// <summary>Attaches a -- line comment to the last IN value, wrapping it in a CommentedValueNode.</summary>
+    private static void PromoteLastToCommented(List<AstNode> list, string lineComment)
+    {
+        if (list.Count == 0) return;
+        list[^1] = list[^1] is CommentedValueNode cv
+            ? new CommentedValueNode { Value = cv.Value, TrailingComment = (cv.TrailingComment ?? "") + " " + lineComment }
+            : new CommentedValueNode { Value = list[^1], TrailingComment = lineComment };
     }
 
     private CaseExprNode ParseCase()

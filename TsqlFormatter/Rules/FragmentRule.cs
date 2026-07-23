@@ -41,15 +41,9 @@ public sealed class FragmentRule : IFormatterRule
         var sb   = new StringBuilder();
         var conds = w.Conditions;
 
+        // Every condition on its own indented line, even a single one.
         sb.Append($"{tabs}where");
-        if (conds.Count == 1 && conds[0] is ConditionNode sc && sc.LogicalOp == null
-            && sc.Expression is not ConditionGroupNode)
-        {
-            var cmt = sc.TrailingComment != null ? $" {sc.TrailingComment}" : "";
-            sb.Append($" {RuleHelpers.EmitExpr(sc.Expression, engine, indent)}{cmt}");
-        }
-        else
-            sb.Append($"\n{RuleHelpers.EmitConditions(conds, engine, indent + 1)}");
+        sb.Append($"\n{RuleHelpers.EmitConditions(conds, engine, indent + 1)}");
         return sb.ToString();
     }
 
@@ -64,7 +58,7 @@ public sealed class FragmentRule : IFormatterRule
             var colStr  = RuleHelpers.EmitExpr(col.Expression, engine, indent);
             var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
             var comma   = i < c.Columns.Count - 1 ? "," : "";
-            var comment = col.TrailingComment != null ? $"{RuleHelpers.Tabs(2)}{col.TrailingComment}" : "";
+            var comment = col.TrailingComment != null ? RuleHelpers.TrailingCommentSuffix(col.TrailingComment) : "";
             var leading = col.LeadingComment  != null ? $"{col.LeadingComment} " : "";
             if (i > 0) sb.Append('\n');
             sb.Append($"{tabs}{leading}{colStr}{alias}{comma}{comment}");

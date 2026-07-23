@@ -123,8 +123,16 @@ internal static class RuleHelpers
                 ? l.Token.Value.ToLowerInvariant()
                 : l.Token.Value;
         }
-        return l.TrailingComment != null ? $"{text}{Tabs(2)}{l.TrailingComment}" : text;
+        return l.TrailingComment != null ? $"{text}{TrailingCommentSuffix(l.TrailingComment)}" : text;
     }
+
+    /// <summary>
+    /// Renders a trailing comment. A /* */ block comment is transparent — it glues directly
+    /// to the preceding text with no separator and no tabs. A -- line comment is offset by
+    /// two tabs (the established trailing-comment gap).
+    /// </summary>
+    public static string TrailingCommentSuffix(string comment) =>
+        comment.StartsWith("/*") ? comment : $"{Tabs(2)}{comment}";
 
     /// <summary>
     /// Rule 2.13: re-indents a multi-line string literal (dynamic SQL).
@@ -219,7 +227,7 @@ internal static class RuleHelpers
     {
         var text = string.Join("", c.Parts.Select(p =>
             p.Type == TokenType.Keyword ? p.Value.ToLowerInvariant() : p.Value));
-        return c.TrailingComment != null ? $"{text}{Tabs(2)}{c.TrailingComment}" : text;
+        return c.TrailingComment != null ? $"{text}{TrailingCommentSuffix(c.TrailingComment)}" : text;
     }
 
     private static string EmitBinary(BinaryExprNode b, FormatterEngine engine, int indent)

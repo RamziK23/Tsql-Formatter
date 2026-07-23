@@ -15,7 +15,7 @@ public static class TestCases
         new TestCase {
             Rule = "1.1", Name = "keywords lowercased, identifiers preserved",
             Input    = "SELECT Id, NAME from dbo.Users WHERE Status = 1",
-            Expected = "select\n\tId,\n\tNAME\nfrom dbo.Users\nwhere Status = 1",
+            Expected = "select\n\tId,\n\tNAME\nfrom dbo.Users\nwhere\n\tStatus = 1",
         },
 
         // ── 2.1 select column layout ──────────────────────────────────────────
@@ -146,14 +146,14 @@ public static class TestCases
         new TestCase {
             Rule = "apply", Name = "cross apply subquery",
             Input    = "select p.maker, l.* from Product as p cross apply (select * from Laptop as L where p.model = L.model) as l",
-            Expected = "select\n\tp.maker,\n\tl.*\nfrom Product as p\n\tcross apply (\n\t\tselect\n\t\t\t*\n\t\tfrom Laptop as L\n\t\twhere p.model = L.model\n\t) as l",
+            Expected = "select\n\tp.maker,\n\tl.*\nfrom Product as p\n\tcross apply (\n\t\tselect\n\t\t\t*\n\t\tfrom Laptop as L\n\t\twhere\n\t\t\tp.model = L.model\n\t) as l",
         },
 
         // ── EXISTS subquery (regression for the recent bug) ───────────────────
         new TestCase {
             Rule = "exists", Name = "exists subquery inside iif",
             Input    = "select max(iif(exists (select * from t as x where x.id = w.id), 1, 0)) as has_it from w",
-            Expected = "select\n\tmax(\n\t\tiif(\n\t\t\texists (\n\t\t\t\tselect\n\t\t\t\t\t*\n\t\t\t\tfrom t as x\n\t\t\t\twhere x.id = w.id\n\t\t\t),\n\t\t\t1,\n\t\t\t0\n\t\t)\n\t) as has_it\nfrom w",
+            Expected = "select\n\tmax(\n\t\tiif(\n\t\t\texists (\n\t\t\t\tselect\n\t\t\t\t\t*\n\t\t\t\tfrom t as x\n\t\t\t\twhere\n\t\t\t\t\tx.id = w.id\n\t\t\t),\n\t\t\t1,\n\t\t\t0\n\t\t)\n\t) as has_it\nfrom w",
         },
 
         // ── 4.1.2 trailing comments ───────────────────────────────────────────
@@ -165,7 +165,7 @@ public static class TestCases
         new TestCase {
             Rule = "4.1.2", Name = "trailing comment on where",
             Input    = "select a from t where x = 1 --фильтр",
-            Expected = "select\n\ta\nfrom t\nwhere x = 1\t\t--фильтр",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\t\t--фильтр",
         },
 
         // ── 2.6 OR grouping ───────────────────────────────────────────────────
@@ -198,12 +198,12 @@ public static class TestCases
         new TestCase {
             Rule = "2.4", Name = "in (subquery)",
             Input    = "select * from t where id in (select id from u where u.x = 1)",
-            Expected = "select\n\t*\nfrom t\nwhere id in (\n\tselect\n\t\tid\n\tfrom u\n\twhere u.x = 1\n)",
+            Expected = "select\n\t*\nfrom t\nwhere\n\tid in (\n\t\tselect\n\t\t\tid\n\t\tfrom u\n\t\twhere\n\t\t\tu.x = 1\n\t)",
         },
         new TestCase {
             Rule = "2.4", Name = "not in (subquery)",
             Input    = "select * from t where id not in (select id from u)",
-            Expected = "select\n\t*\nfrom t\nwhere id not in (\n\tselect\n\t\tid\n\tfrom u\n)",
+            Expected = "select\n\t*\nfrom t\nwhere\n\tid not in (\n\t\tselect\n\t\t\tid\n\t\tfrom u\n\t)",
         },
 
         // ── 2.2 join normalization (detailed) ─────────────────────────────────
@@ -236,13 +236,18 @@ public static class TestCases
         new TestCase {
             Rule = "cte", Name = "single cte: opening paren on as line",
             Input    = "WITH cte AS (SELECT s.[Id], s.[Val] FROM [dbo].[Src] s WHERE s.[Val] > 0)\nSELECT c.[Id] FROM cte c",
-            Expected = "with cte as (\n\tselect\n\t\ts.[Id],\n\t\ts.[Val]\n\tfrom [dbo].[Src] as s\n\twhere s.[Val] > 0\n)\nselect\n\tc.[Id]\nfrom cte as c",
+            Expected = "with cte as (\n\tselect\n\t\ts.[Id],\n\t\ts.[Val]\n\tfrom [dbo].[Src] as s\n\twhere\n\t\ts.[Val] > 0\n)\nselect\n\tc.[Id]\nfrom cte as c",
         },
         // ── leading block comment on columns ──────────────────────────────────
         new TestCase {
-            Rule = "4.1", Name = "leading block comment before column with brackets",
+            Rule = "blockcmt", Name = "block comment in IN list is transparent, list stays inline",
+            Input    = "select * from a where id in (1, 2, 3, 4, 5, 6/*7,8,9,0*/, 1, 2, 3, 4)",
+            Expected = "select\n\t*\nfrom a\nwhere\n\tid in (1, 2, 3, 4, 5, 6/*7,8,9,0*/, 1, 2, 3, 4)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment between columns trails the preceding column, no tab",
             Input    = "SELECT 'SELECT a.[x] FROM t WHERE a.[y] = 1' AS [sql_text], /* [Alias] = expr, INNER JOIN, declare @a int */ c.[id]\nFROM [dbo].[C] c",
-            Expected = "select\n\t'SELECT a.[x] FROM t WHERE a.[y] = 1' as [sql_text],\n\t/* [Alias] = expr, INNER JOIN, declare @a int */ c.[id]\nfrom [dbo].[C] as c",
+            Expected = "select\n\t'SELECT a.[x] FROM t WHERE a.[y] = 1' as [sql_text],/* [Alias] = expr, INNER JOIN, declare @a int */\n\tc.[id]\nfrom [dbo].[C] as c",
         },
         new TestCase {
             Rule = "2.8", Name = "begin/end with declare and select, no extra end column",
@@ -257,9 +262,9 @@ public static class TestCases
             Expected = "where\n\ta.id = 1\n\tand b.x > 0",
         },
         new TestCase {
-            Rule = "fragment", Name = "bare WHERE single condition stays inline",
+            Rule = "fragment", Name = "bare WHERE single condition on its own line",
             Input    = "where x = 1",
-            Expected = "where x = 1",
+            Expected = "where\n\tx = 1",
         },
         new TestCase {
             Rule = "fragment", Name = "bare WHERE with OR grouping",
@@ -300,7 +305,7 @@ public static class TestCases
         new TestCase {
             Rule = "hint", Name = "with (nolock) on table",
             Input    = "select a from t with (nolock) where x = 1",
-            Expected = "select\n\ta\nfrom t with (nolock)\nwhere x = 1",
+            Expected = "select\n\ta\nfrom t with (nolock)\nwhere\n\tx = 1",
         },
         new TestCase {
             Rule = "hint", Name = "with (nolock) in join",
@@ -325,7 +330,7 @@ public static class TestCases
         new TestCase {
             Rule = "derived", Name = "derived table subquery in from",
             Input    = "select x.a from (select a from t where b = 1) as x",
-            Expected = "select\n\tx.a\nfrom (\n\tselect\n\t\ta\n\tfrom t\n\twhere b = 1\n) as x",
+            Expected = "select\n\tx.a\nfrom (\n\tselect\n\t\ta\n\tfrom t\n\twhere\n\t\tb = 1\n) as x",
         },
         new TestCase {
             Rule = "simplecase", Name = "simple case (case x when)",
@@ -414,7 +419,7 @@ public static class TestCases
         new TestCase {
             Rule = "inline-cmt", Name = "inline comment on single where condition",
             Input    = "select a from t where x = 1 /* only */",
-            Expected = "select\n\ta\nfrom t\nwhere x = 1 /* only */",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1 /* only */",
         },
         new TestCase {
             Rule = "inline-cmt", Name = "inline comment in join on",
@@ -495,7 +500,7 @@ public static class TestCases
         new TestCase {
             Rule = "dquote", Name = "double-quoted with join and where",
             Input    = "select \"a\".\"id\" from \"t1\" a inner join \"t2\" b on (\"a\".\"id\" = \"b\".\"aid\") where \"a\".\"x\" = 1",
-            Expected = "select\n\t\"a\".\"id\"\nfrom \"t1\" as a\n\tinner join \"t2\" as b\n\t\ton (\"a\".\"id\" = \"b\".\"aid\")\nwhere \"a\".\"x\" = 1",
+            Expected = "select\n\t\"a\".\"id\"\nfrom \"t1\" as a\n\tinner join \"t2\" as b\n\t\ton (\"a\".\"id\" = \"b\".\"aid\")\nwhere\n\t\"a\".\"x\" = 1",
         },
         new TestCase {
             Rule = "dquote", Name = "escaped double-quote inside identifier",
