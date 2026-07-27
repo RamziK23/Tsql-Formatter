@@ -170,6 +170,11 @@ public static class TestCases
             Expected = "select\n\ta,\t\t--первая колонка\n\tb\t\t--вторая\nfrom t",
         },
         new TestCase {
+            Rule = "4.1.2", Name = "comma before trailing -- comment on a non-last column",
+            Input    = "select a, b.c\t\t--note about c\n, d\nfrom t",
+            Expected = "select\n\ta,\n\tb.c,\t\t--note about c\n\td\nfrom t",
+        },
+        new TestCase {
             Rule = "4.1.2", Name = "trailing comment on where",
             Input    = "select a from t where x = 1 --фильтр",
             Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\t\t--фильтр",

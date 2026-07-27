@@ -626,6 +626,10 @@ public sealed class Parser
             }
 
             var expr = ParseExpression();
+            // A -- comment captured by the expression's root (a ColumnRef/Literal) belongs to
+            // the whole column and must render AFTER the comma, not inside the expression — pull
+            // it up to the column level so the comma never lands inside the comment (bug 5).
+            string? comment = TakeLineCommentFrom(expr);
             Token? alias = assignAlias;
             if (alias == null)
             {
@@ -634,9 +638,8 @@ public sealed class Parser
                          && !IsClauseKeyword(Peek()) && !IsGoKeyword())
                     alias = Advance();
             }
-            string? comment = null;
             // Only a comment on the SAME line is a trailing comment for this column.
-            comment = TryTakeSameLineComment();
+            if (comment == null) comment = TryTakeSameLineComment();
             if (PeekIs(TokenType.Comma)) Advance();
             // A trailing comment may also sit AFTER the comma on the same line: "a, --note"
             // or "a, /* note */". A block comment there is transparent — glued to this column.
