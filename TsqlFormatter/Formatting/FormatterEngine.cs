@@ -22,16 +22,25 @@ public sealed class FormatterEngine
     /// </summary>
     public static string FormatSource(string source)
     {
-        var engine = FormatterFactory.Create();
+        try
+        {
+            var engine = FormatterFactory.Create();
 
-        // Attempt fragment parse on a fresh token stream.
-        var fragment = new Parser(new Lexer(source).Tokenize()).ParseFragment();
-        if (fragment != null)
-            return engine.Format(fragment).TrimEnd() + "\n";
+            // Attempt fragment parse on a fresh token stream.
+            var fragment = new Parser(new Lexer(source).Tokenize()).ParseFragment();
+            if (fragment != null)
+                return engine.Format(fragment).TrimEnd() + "\n";
 
-        // Fall back to full-statement parsing.
-        var script = new Parser(new Lexer(source).Tokenize()).Parse();
-        return engine.FormatScript(script);
+            // Fall back to full-statement parsing.
+            var script = new Parser(new Lexer(source).Tokenize()).Parse();
+            return engine.FormatScript(script);
+        }
+        catch (ParseException)
+        {
+            // Graceful degradation: couldn't parse reliably, so return the input unchanged
+            // rather than emit desynchronized/broken SQL.
+            return source;
+        }
     }
 
     public string Format(AstNode node, int indent = 0)

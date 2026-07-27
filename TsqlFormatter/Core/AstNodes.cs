@@ -62,6 +62,9 @@ public sealed class SelectStatementNode : AstNode
     public List<AstNode> CteDefinitions { get; } = new();
     /// <summary>Standalone comments that trailed the FROM/JOIN block (before WHERE/GROUP/etc).</summary>
     public List<string> PostFromComments { get; } = new();
+    /// <summary>Comments that preceded the SELECT keyword (e.g. inside "( --note\n select ...)").
+    /// Rendered on their own line(s) above the select header.</summary>
+    public List<string> LeadingComments { get; } = new();
 }
 
 /// <summary>

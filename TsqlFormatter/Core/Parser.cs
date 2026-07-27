@@ -11,6 +11,9 @@ public sealed class Parser
 {
     private readonly List<Token> _tokens;
     private int _pos;
+    // Comments skipped by Expect() while re-synchronizing; drained onto the next node
+    // (e.g. a subquery SELECT) so they are never silently lost.
+    private readonly List<string> _pendingComments = new();
 
     private static readonly HashSet<TokenType> Skippable = new()
     {
@@ -323,6 +326,9 @@ public sealed class Parser
     private SelectStatementNode ParseSelectStatement(List<AstNode>? ctes)
     {
         Expect(TokenType.Keyword, "SELECT");
+        // A comment sitting just before SELECT (e.g. inside "( --note\n select ...)") was
+        // skipped by Expect; keep it as a leading comment rendered above the select.
+        var leadingComments = DrainPendingComments();
         // SELECT [DISTINCT] [TOP ...] — DISTINCT precedes TOP syntactically.
         bool distinct = false;
         if (Peek().IsKeyword("DISTINCT")) { distinct = true; Advance(); }
@@ -357,6 +363,7 @@ public sealed class Parser
             topExpr = tb.ToString();
         }
         var node = new SelectStatementNode { IsDistinct = distinct, TopExpr = topExpr };
+        node.LeadingComments.AddRange(leadingComments);
         if (ctes != null) node.CteDefinitions.AddRange(ctes);
         node.Columns.AddRange(ParseSelectColumns());
         if (Peek().IsKeyword("FROM"))
@@ -1462,8 +1469,49 @@ public sealed class Parser
     private Token Expect(TokenType type, string? value = null)
     {
         var t = Peek();
-        if (t.Type != type || (value != null && !t.Value.Equals(value, StringComparison.OrdinalIgnoreCase))) return t;
-        return Advance();
+        if (Matches(t, type, value)) return Advance();
+        // Tolerate comments sitting before the expected token: skip them (remembering their
+        // text in the pending buffer) and retry, so a comment can't desync the stream
+        // (e.g. "exists ( --note\n select ...)"). Only a genuine token mismatch is an error.
+        if (SkipLeadingComments())
+        {
+            t = Peek();
+            if (Matches(t, type, value)) return Advance();
+        }
+        throw new ParseException(type, value, t);
+    }
+
+    private static bool Matches(Token t, TokenType type, string? value) =>
+        t.Type == type && (value == null || t.Value.Equals(value, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Advances past leading whitespace/newlines and comment tokens, collecting the
+    /// comment text into the pending buffer. Returns true if at least one comment was skipped.</summary>
+    private bool SkipLeadingComments()
+    {
+        bool any = false;
+        while (true)
+        {
+            int i = _pos;
+            while (i < _tokens.Count && Skippable.Contains(_tokens[i].Type)) i++;
+            if (i < _tokens.Count &&
+                (_tokens[i].Type == TokenType.LineComment || _tokens[i].Type == TokenType.BlockComment))
+            {
+                _pendingComments.Add(_tokens[i].Value);
+                _pos = i + 1;
+                any = true;
+            }
+            else break;
+        }
+        return any;
+    }
+
+    /// <summary>Returns and clears any comments collected by Expr's comment-skipping.</summary>
+    private List<string> DrainPendingComments()
+    {
+        if (_pendingComments.Count == 0) return new List<string>();
+        var copy = new List<string>(_pendingComments);
+        _pendingComments.Clear();
+        return copy;
     }
 
     private bool TryConsume(TokenType type) { if (Peek().Type != type) return false; Advance(); return true; }

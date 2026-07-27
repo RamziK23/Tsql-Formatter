@@ -18,6 +18,10 @@ public sealed class SelectRule : IFormatterRule
         var sb  = new System.Text.StringBuilder();
         var tabs = RuleHelpers.Tabs(indent);
 
+        // Comments that preceded the SELECT keyword, each on its own line above the header.
+        foreach (var c in sel.LeadingComments)
+            sb.Append($"{tabs}{c}\n");
+
         // ── CTEs ──────────────────────────────────────────────────────────────
         if (sel.CteDefinitions.Count > 0)
         {
