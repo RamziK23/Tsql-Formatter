@@ -189,6 +189,12 @@ public static class TestCases
             Expected = "select\n\ta\nfrom t\nwhere\n\texists (\n\t\t--note\n\t\tselect\n\t\t\t1\n\t\tfrom u\n\t\twhere\n\t\t\tu.x = 1\n\t)",
         },
 
+        new TestCase {
+            Rule = "parse-safety", Name = "comment before subquery select inside IN (...)",
+            Input    = "select a from t where id in (\n\t--only active\n\tselect id from u where u.x = 1\n)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tid in (\n\t\t--only active\n\t\tselect\n\t\t\tid\n\t\tfrom u\n\t\twhere\n\t\t\tu.x = 1\n\t)",
+        },
+
         // ── 2.6 OR grouping ───────────────────────────────────────────────────
         new TestCase {
             Rule = "2.6", Name = "atomic OR (2.6.4)",
