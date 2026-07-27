@@ -788,6 +788,28 @@ public sealed class Parser
 
     private AstNode ParseComparison()
     {
+        // Prefix boolean NOT: "not exists (...)" and "not (condition group)" must each parse
+        // as a SINGLE node, otherwise a condition list splits "not" off from its operand.
+        if (Peek().IsKeyword("NOT"))
+        {
+            var nxt = PeekAt(1);
+            if (nxt.IsKeyword("EXISTS"))
+            {
+                Advance(); // not
+                Advance(); // exists
+                Expect(TokenType.LeftParen);
+                var sub = ParseSelectOrSet(null);
+                Expect(TokenType.RightParen);
+                return new FunctionCallNode { Name = "EXISTS", IsKeywordFunction = true, Negated = true }
+                    .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub }));
+            }
+            if (nxt.Type == TokenType.LeftParen)
+            {
+                Advance(); // not
+                return new NotExprNode { Inner = ParsePrimary() };
+            }
+        }
+
         var left = ParseAdditive();
         var op = Peek();
         if (op.Type is TokenType.Equals or TokenType.NotEquals or TokenType.LessThan

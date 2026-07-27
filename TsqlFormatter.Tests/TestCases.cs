@@ -213,6 +213,17 @@ public static class TestCases
             Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\noption(recompile)\n--next statement comment\nselect\n\t2\nfrom u",
         },
 
+        new TestCase {
+            Rule = "not-exists", Name = "NOT EXISTS is a single condition, not split",
+            Input    = "select a from t where w.fc = 0 and not exists (\n\tselect 1 from u where u.id = t.id\n) and x = 1",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tw.fc = 0\n\tand not exists (\n\t\tselect\n\t\t\t1\n\t\tfrom u\n\t\twhere\n\t\t\tu.id = t.id\n\t)\n\tand x = 1",
+        },
+        new TestCase {
+            Rule = "not-exists", Name = "prefix NOT (group) is a single condition",
+            Input    = "select a from t where not (x = 1 or y = 2)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tnot (\n\t\tx = 1\n\t\tor y = 2\n\t)",
+        },
+
         // ── 2.6 OR grouping ───────────────────────────────────────────────────
         new TestCase {
             Rule = "2.6", Name = "atomic OR (2.6.4)",

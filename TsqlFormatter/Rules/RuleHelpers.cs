@@ -67,6 +67,7 @@ internal static class RuleHelpers
             FunctionCallNode fn => EmitFunction(fn, engine, indent),
             CaseExprNode  ce => EmitCase(ce, engine, indent),
             InValueGroupNode grp => string.Join(", ", grp.Values.Select(v => EmitExpr(v, engine, indent))),
+            NotExprNode n => $"not {EmitExpr(n.Inner, engine, indent)}",
             RawTokensNode rt => EmitRawTokens(rt.Tokens),
             _ => engine.Format(node, indent)
         };
@@ -341,7 +342,7 @@ internal static class RuleHelpers
         }
 
         if (fn.Name.Equals("EXISTS", StringComparison.OrdinalIgnoreCase) && fn.Arguments.Count == 1)
-            return $"exists {EmitExpr(fn.Arguments[0], engine, indent)}";
+            return $"{(fn.Negated ? "not " : "")}exists {EmitExpr(fn.Arguments[0], engine, indent)}";
 
         var fnName = fn.IsKeywordFunction ? fn.Name.ToLowerInvariant() : fn.Name;
         var overStr = fn.OverClause != null

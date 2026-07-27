@@ -262,6 +262,15 @@ public sealed class FunctionCallNode : AstNode
     public AstNode? OverClause { get; init; }
     /// <summary>Set quantifier inside an aggregate: "distinct" or "all" (e.g. count(distinct x)).</summary>
     public string? SetQuantifier { get; init; }
+    /// <summary>True for a negated EXISTS: renders "not exists (...)" as a single construct.</summary>
+    public bool Negated { get; init; }
+}
+
+/// <summary>Unary boolean negation: NOT (condition/group). Kept as one node so a condition
+/// list never splits "not" and its operand into two separate conditions.</summary>
+public sealed class NotExprNode : AstNode
+{
+    public AstNode Inner { get; init; } = null!;
 }
 
 public sealed class CaseExprNode : AstNode
