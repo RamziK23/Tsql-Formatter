@@ -59,9 +59,9 @@ public sealed class FragmentRule : IFormatterRule
             var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
             var comma   = i < c.Columns.Count - 1 ? "," : "";
             var comment = col.TrailingComment != null ? RuleHelpers.TrailingCommentSuffix(col.TrailingComment) : "";
-            var leading = col.LeadingComment  != null ? $"{col.LeadingComment} " : "";
+            var (lineLead, blockLead) = RuleHelpers.SplitLeadingComments(col.LeadingComments, tabs);
             if (i > 0) sb.Append('\n');
-            sb.Append($"{tabs}{leading}{colStr}{alias}{comma}{comment}");
+            sb.Append($"{lineLead}{tabs}{blockLead}{colStr}{alias}{comma}{comment}");
         }
         return sb.ToString();
     }

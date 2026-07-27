@@ -175,6 +175,13 @@ public static class TestCases
             Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\t\t--фильтр",
         },
 
+        // ── bug 2: line comments in the column list stay on their own line ────
+        new TestCase {
+            Rule = "parse-safety", Name = "commented-out top and column stay on own line, real columns kept",
+            Input    = "select --top (@top)\n w.cid as objectId,\n--  '' as comment,\n ac.title as city_title\nfrom t",
+            Expected = "select\n\t--top (@top)\n\tw.cid as objectId,\n\t--  '' as comment,\n\tac.title as city_title\nfrom t",
+        },
+
         // ── bug 0/3: comment before a subquery SELECT must not desync the parser ─
         new TestCase {
             Rule = "parse-safety", Name = "comment between ( and select renders above select, subquery intact",

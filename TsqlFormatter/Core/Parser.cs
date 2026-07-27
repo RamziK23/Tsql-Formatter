@@ -591,9 +591,13 @@ public sealed class Parser
         {
             if (PeekIs(TokenType.Comma)) { Advance(); continue; }
 
-            // Leading block comment before a column: /* note */ expr
-            string? leadingComment = null;
-            if (PeekIs(TokenType.BlockComment)) leadingComment = Advance().Value;
+            // Leading comments before a column: block comments (/* */, kept inline) and line
+            // comments standing on their own line (-- , rendered above the column). Capturing
+            // line comments here keeps them out of ParsePrimary, where they would otherwise be
+            // mis-parsed as an expression/alias.
+            var leadingComments = new List<string>();
+            while (PeekIs(TokenType.BlockComment) || PeekIs(TokenType.LineComment))
+                leadingComments.Add(Advance().Value);
 
             // Rule: detect T-SQL assignment alias: [Alias] = expression
             // Pattern: simple identifier/quoted-identifier immediately followed by =
@@ -621,7 +625,8 @@ public sealed class Parser
             // A trailing comment may also sit AFTER the comma on the same line: "a, --note"
             // or "a, /* note */". A block comment there is transparent — glued to this column.
             if (comment == null) comment = TryTakeSameLineInlineComment();
-            cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment, LeadingComment = leadingComment });
+            cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment }
+                .Tap(c => c.LeadingComments.AddRange(leadingComments)));
         }
         return cols;
     }
@@ -931,6 +936,12 @@ public sealed class Parser
         if (tok.Type is TokenType.StringLiteral or TokenType.NumberLiteral)
         { var lit = new LiteralNode { Token = Advance() }; lit.TrailingComment = TryTakeSameLineComment(); return lit; }
         if (tok.Type == TokenType.BlockComment) return new LiteralNode { Token = Advance() };
+
+        // A -- line comment is never an operand: turning it into a "value" would swallow the
+        // rest of the line (real columns/conditions). Signal a parse error so the caller can
+        // recover (callers that expect leading comments capture them before reaching here).
+        if (tok.Type == TokenType.LineComment)
+            throw new ParseException($"Line comment cannot be an expression at line {tok.Line}, col {tok.Column}: '{tok.Value}'.");
 
         // Wildcard SELECT *
         if (tok.Type == TokenType.Multiply)

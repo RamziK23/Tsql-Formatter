@@ -132,8 +132,10 @@ public sealed class SelectColumnNode : AstNode
     public Token? Alias { get; init; }
     public bool CommaLeading { get; init; }
     public string? TrailingComment { get; set; }
-    /// <summary>Leading block comment before the column: /* note */ expr</summary>
-    public string? LeadingComment { get; set; }
+    /// <summary>Comments before the column. A /* */ block comment renders inline before the
+    /// expression (/* note */ expr); a -- line comment renders on its own line above the
+    /// column (it can never precede an expression inline, or the expression is commented out).</summary>
+    public List<string> LeadingComments { get; } = new();
 }
 
 // ─── FROM / JOIN ─────────────────────────────────────────────────────────────

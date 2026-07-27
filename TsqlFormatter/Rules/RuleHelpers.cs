@@ -135,6 +135,25 @@ internal static class RuleHelpers
         comment.StartsWith("/*") ? comment : $"{Tabs(2)}{comment}";
 
     /// <summary>
+    /// Splits a column's leading comments into two rendered parts: line (--) comments each on
+    /// their own line above the column (prefixed by <paramref name="linePrefix"/> and ending in
+    /// a newline) and block (/* */) comments glued inline before the expression. A -- comment can
+    /// never sit inline before an expression or the expression would be commented out.
+    /// </summary>
+    public static (string lineLead, string blockLead) SplitLeadingComments(
+        System.Collections.Generic.List<string> comments, string linePrefix)
+    {
+        var line = new System.Text.StringBuilder();
+        var block = new System.Text.StringBuilder();
+        foreach (var c in comments)
+        {
+            if (c.StartsWith("/*")) block.Append(c).Append(' ');
+            else                    line.Append(linePrefix).Append(c).Append('\n');
+        }
+        return (line.ToString(), block.ToString());
+    }
+
+    /// <summary>
     /// Rule 2.13: re-indents a multi-line string literal (dynamic SQL).
     /// The literal value still includes its surrounding single quotes.
     /// Inner content keeps its RELATIVE indentation but the whole block is shifted so

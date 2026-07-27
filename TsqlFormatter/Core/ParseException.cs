@@ -16,6 +16,8 @@ public sealed class ParseException : Exception
     {
     }
 
+    public ParseException(string message) : base(message) { }
+
     private static string Describe(TokenType expectedType, string? expectedValue, Token got)
     {
         var exp = expectedValue != null ? $"{expectedType} '{expectedValue}'" : expectedType.ToString();

@@ -54,9 +54,10 @@ public sealed class SelectRule : IFormatterRule
             // Rule 4.1.2: comma goes BEFORE the trailing comment. A -- comment is offset by
             // two tabs; a /* */ block comment glues directly (transparent).
             var comment = col.TrailingComment != null ? RuleHelpers.TrailingCommentSuffix(col.TrailingComment) : "";
-            // Leading block comment sits before the column expression
-            var leading = col.LeadingComment != null ? $"{col.LeadingComment} " : "";
-            sb.Append($"\n{tabs}\t{leading}{colStr}{alias}{comma}{comment}");
+            // Leading comments: -- line comments each on their own line above the column;
+            // /* */ block comments inline before the expression.
+            var (lineLead, blockLead) = RuleHelpers.SplitLeadingComments(col.LeadingComments, $"{tabs}\t");
+            sb.Append($"\n{lineLead}{tabs}\t{blockLead}{colStr}{alias}{comma}{comment}");
         }
 
         // ── INTO (SELECT ... INTO #tbl) ───────────────────────────────────────
