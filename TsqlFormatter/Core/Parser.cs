@@ -1097,6 +1097,23 @@ public sealed class Parser
         AttachGluedBlockComment(list[^1] is CommentedValueNode cv ? cv.Value : list[^1], blockComment);
     }
 
+    /// <summary>Glues any /* */ block comment(s) on the SAME line (whitespace-only before them,
+    /// no newline) onto the given expression node — transparent, kept where they were.</summary>
+    private void GlueSameLineBlockComments(AstNode expr)
+    {
+        while (true)
+        {
+            int j = _pos;
+            while (j < _tokens.Count && _tokens[j].Type == TokenType.Whitespace) j++;
+            if (j < _tokens.Count && _tokens[j].Type == TokenType.BlockComment)
+            {
+                AttachGluedBlockComment(expr, _tokens[j].Value);
+                _pos = j + 1;
+            }
+            else break;
+        }
+    }
+
     /// <summary>Appends a glued /* */ block comment to a value node that can carry a trailing comment.</summary>
     private static void AttachGluedBlockComment(AstNode val, string blockComment)
     {
@@ -1204,8 +1221,12 @@ public sealed class Parser
         var list = new List<AstNode>();
         while (!IsAtEnd() && !IsSelectClauseKeyword())
         {
-            list.Add(ParseExpression());
+            var expr = ParseExpression();
             if (Peek().IsKeyword("ASC") || Peek().IsKeyword("DESC")) Advance();
+            // A /* */ block comment on the same line stays glued to the item (transparent),
+            // instead of migrating to its own line as a standalone comment.
+            GlueSameLineBlockComments(expr);
+            list.Add(expr);
             if (PeekIs(TokenType.Comma)) { Advance(); continue; } break;
         }
         return list;

@@ -245,9 +245,19 @@ public static class TestCases
 
         // ── 2.13 dynamic SQL string literal ───────────────────────────────────
         new TestCase {
-            Rule = "2.13", Name = "multiline dynamic sql reindented +1 tab, closing quote at declaring indent",
+            Rule = "blockcmt", Name = "block comment glued to last group by item stays put",
+            Input    = "select a from t group by a, b/*, c*/",
+            Expected = "select\n\ta\nfrom t\ngroup by\n\ta,\n\tb/*, c*/",
+        },
+        new TestCase {
+            Rule = "2.13", Name = "concatenated dynamic sql fragments emitted verbatim",
+            Input    = "declare @x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
+            Expected = "declare\n\t@x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
+        },
+        new TestCase {
+            Rule = "2.13", Name = "multiline dynamic sql string emitted verbatim (no reindent)",
             Input    = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from '+b.dbName+'.dbo.contract'+b.suffix+'\n' from webcar.dbo.billing as b",
-            Expected = "declare\n\t@s varchar(max) = ''\nselect\n\t@s = @s + '\n\t\tselect\n\t\t    id,\n\t\t    title\n\t\tfrom ' + b.dbName + '.dbo.contract' + b.suffix + '\n\t'\nfrom webcar.dbo.billing as b",
+            Expected = "declare\n\t@s varchar(max) = ''\nselect\n\t@s = @s + '\n    select\n        id,\n        title\n    from ' + b.dbName + '.dbo.contract' + b.suffix + '\n'\nfrom webcar.dbo.billing as b",
         },
 
         // ── 2.4 subquery in IN ────────────────────────────────────────────────

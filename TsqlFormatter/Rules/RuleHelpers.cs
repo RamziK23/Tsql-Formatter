@@ -111,19 +111,10 @@ internal static class RuleHelpers
 
     private static string EmitLiteral(LiteralNode l, int indent = 0)
     {
-        string text;
-        if (l.Token.Type == TokenType.StringLiteral && l.Token.Value.Contains('\n'))
-        {
-            // Rule 2.13: dynamic SQL string. Content starts on the next line at +1 tab;
-            // the closing quote sits at the declaring line's indent.
-            text = ReindentDynamicSql(l.Token.Value, indent);
-        }
-        else
-        {
-            text = l.Token.Type == TokenType.Keyword
-                ? l.Token.Value.ToLowerInvariant()
-                : l.Token.Value;
-        }
+        // String literals (including multi-line dynamic SQL) are emitted VERBATIM: reindenting
+        // their content would scramble hand-aligned dynamic SQL and shift -- comments inside the
+        // string. Only keyword literals are case-normalized.
+        var text = l.Token.Type == TokenType.Keyword ? l.Token.Value.ToLowerInvariant() : l.Token.Value;
         return l.TrailingComment != null ? $"{text}{TrailingCommentSuffix(l.TrailingComment)}" : text;
     }
 
@@ -152,95 +143,6 @@ internal static class RuleHelpers
             else                    line.Append(linePrefix).Append(c).Append('\n');
         }
         return (line.ToString(), block.ToString());
-    }
-
-    /// <summary>
-    /// Rule 2.13: re-indents a multi-line string literal (dynamic SQL).
-    /// The literal value still includes its surrounding single quotes.
-    /// Inner content keeps its RELATIVE indentation but the whole block is shifted so
-    /// its shallowest line sits at indent+1 tabs; the closing-quote line aligns to indent.
-    /// </summary>
-    private static string ReindentDynamicSql(string raw, int indent)
-    {
-        var lines = raw.Replace("\r\n", "\n").Split('\n');
-        if (lines.Length <= 1) return raw;
-
-        // Determine the minimum leading-whitespace width among non-empty inner lines.
-        // The last line is a "bare closing quote" line if, after trimming, only the
-        // closing single-quote remains (the literal value includes its quotes).
-        bool lastIsClose = lines[lines.Length - 1].Trim() == "'";
-        int lastContentIdx = lastIsClose ? lines.Length - 2 : lines.Length - 1;
-        int minWidth = int.MaxValue;
-        for (int i = 1; i <= lastContentIdx; i++)
-        {
-            if (lines[i].Trim().Length == 0) continue;
-            int w = LeadingWidth(lines[i]);
-            if (w < minWidth) minWidth = w;
-        }
-        if (minWidth == int.MaxValue) minWidth = 0;
-
-        var baseIndent = Tabs(indent + 1);
-        var sb = new System.Text.StringBuilder();
-        // The last line is the "closing" line only if it carries just the closing quote
-        // (i.e. it is effectively empty after the leading whitespace). For intermediate
-        // concatenated literals like '\n... from ' the last line is real content.
-        bool lastIsBareClose = lines[lines.Length - 1].Trim() == "'";
-
-        for (int i = 0; i < lines.Length; i++)
-        {
-            string line = lines[i];
-            if (i == 0)
-            {
-                sb.Append(line.TrimEnd());                 // opening quote line
-            }
-            else if (i == lines.Length - 1 && lastIsBareClose)
-            {
-                sb.Append('\n');
-                sb.Append(Tabs(indent) + line.TrimStart()); // closing quote aligned to indent
-            }
-            else if (line.Trim().Length == 0)
-            {
-                sb.Append('\n');                            // keep blank lines blank
-            }
-            else
-            {
-                // Strip the common minimum prefix, keep the rest (relative nesting),
-                // then prepend the base indent.
-                string stripped = StripWidth(line, minWidth);
-                sb.Append('\n');
-                sb.Append(baseIndent + stripped);
-            }
-        }
-        return sb.ToString();
-    }
-
-    // Treats a tab as 4 columns for measuring leading whitespace width.
-    private static int LeadingWidth(string line)
-    {
-        int w = 0;
-        foreach (char c in line)
-        {
-            if (c == '\t') w += 4;
-            else if (c == ' ') w += 1;
-            else break;
-        }
-        return w;
-    }
-
-    // Removes `width` columns of leading whitespace (tab = 4 cols), preserving the remainder.
-    private static string StripWidth(string line, int width)
-    {
-        int consumed = 0, idx = 0;
-        while (idx < line.Length && consumed < width)
-        {
-            if (line[idx] == '\t') consumed += 4;
-            else if (line[idx] == ' ') consumed += 1;
-            else break;
-            idx++;
-        }
-        // Convert any remaining leading spaces (4 spaces -> 1 tab) for consistency
-        var rest = line.Substring(idx);
-        return rest;
     }
 
     private static string EmitColumnRef(ColumnRefNode c)
