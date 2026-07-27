@@ -1317,6 +1317,9 @@ public sealed class Parser
             var nameTokens = new System.Text.StringBuilder();
             while (!IsAtEnd() && !IsGoKeyword() && Peek().Type != TokenType.EndOfFile
                    && Peek().Type != TokenType.Semicolon
+                   // A comment is never part of the table name; stop so a same-line -- comment
+                   // is picked up as the statement's trailing comment instead of glued in.
+                   && Peek().Type != TokenType.LineComment && Peek().Type != TokenType.BlockComment
                    && !Peek().IsKeyword("CREATE") && !Peek().IsKeyword("SELECT")
                    && !Peek().IsKeyword("INSERT") && !Peek().IsKeyword("DROP")
                    && !Peek().IsKeyword("BEGIN")

@@ -35,6 +35,13 @@ public static class TestCases
             Expected = "select\n\tcount(*)\nfrom t\ngroup by\n\ta\norder by\n\ta",
         },
 
+        // ── DROP TABLE trailing comment (bug 7) ──────────────────────────────
+        new TestCase {
+            Rule = "droptable", Name = "trailing -- comment not glued into the table name",
+            Input    = "drop table if exists #aa_part\t\t--attempt to split\nselect 1 from t",
+            Expected = "drop table if exists #aa_part\t\t--attempt to split\nselect\n\t1\nfrom t",
+        },
+
         // ── SELECT ... INTO #tbl (bug 1) ──────────────────────────────────────
         new TestCase {
             Rule = "into", Name = "select ... into #tmp on its own line between columns and from",
