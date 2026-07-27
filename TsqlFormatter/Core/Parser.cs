@@ -250,16 +250,11 @@ public sealed class Parser
             }
             AstNode? init = null;
             if (TryConsume(TokenType.Equals)) init = ParseExpression();
-            // Trailing comment before the comma: @a int = 1, --note
-            string? varComment = null;
-            if (PeekIs(TokenType.LineComment)) varComment = Advance().Value;
+            // Trailing comment on the SAME line as the variable: @a int = 1 --note.
+            // A comment on the NEXT line is standalone and must not be pulled in here.
+            string? varComment = TryTakeSameLineComment();
             node.Variables.Add(new DeclareVarNode { Variable = variable, Initializer = init, TrailingComment = varComment }
                 .Tap(v => v.DataType.AddRange(dataType)));
-            // A trailing comment may also sit after the comma: @a int = 1, --note
-            if (PeekIs(TokenType.Comma))
-            {
-                // peek: comment right after comma belongs to the just-added variable if it had none
-            }
         } while (PeekIs(TokenType.Comma) && ConsumeCommaThenMaybeComment(node));
         return node;
     }
@@ -505,12 +500,11 @@ public sealed class Parser
     private bool ConsumeCommaThenMaybeComment(DeclareNode node)
     {
         Advance(); // comma
-        if (PeekIs(TokenType.LineComment))
-        {
-            var c = Advance().Value;
-            if (node.Variables.Count > 0 && node.Variables[^1].TrailingComment == null)
-                node.Variables[^1].TrailingComment = c;
-        }
+        // Only a comment on the SAME line as the comma trails the just-parsed variable;
+        // a comment on the next line is standalone and left for the next statement.
+        var c = TryTakeSameLineComment();
+        if (c != null && node.Variables.Count > 0 && node.Variables[^1].TrailingComment == null)
+            node.Variables[^1].TrailingComment = c;
         return true;
     }
 

@@ -484,6 +484,11 @@ public static class TestCases
 
         // ── declare + comment edge cases (тест2/тест3) ────────────────────────
         new TestCase {
+            Rule = "declare", Name = "next-line comment after declare stays standalone (bug 6)",
+            Input    = "declare @a date = getdate()\n--next line comment\nselect 1 from t",
+            Expected = "declare\n\t@a date = getdate()\n--next line comment\nselect\n\t1\nfrom t",
+        },
+        new TestCase {
             Rule = "declare", Name = "single variable on its own indented line",
             Input    = "declare @be int = 1",
             Expected = "declare\n\t@be int = 1",
