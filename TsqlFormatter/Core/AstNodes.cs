@@ -175,6 +175,9 @@ public sealed class ConditionNode : AstNode
     public AstNode Expression { get; init; } = null!;
     /// <summary>Inline comment on the same line, after the condition expression.</summary>
     public string? TrailingComment { get; set; }
+    /// <summary>Standalone comments on their own line(s) before this condition (e.g. a
+    /// commented-out "--and x = 1"). Rendered above the condition, never inline.</summary>
+    public List<string> LeadingComments { get; } = new();
 }
 
 public sealed class OrGroupNode : AstNode

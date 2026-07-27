@@ -427,6 +427,9 @@ internal static class RuleHelpers
         {
             if (c is ConditionNode cond)
             {
+                // Standalone comments on their own line(s) above the condition.
+                foreach (var lc in cond.LeadingComments)
+                    lines.Add($"{Tabs(indent)}{lc}");
                 string prefix = cond.LogicalOp != null ? $"{cond.LogicalOp} " : "";
                 string expr   = EmitExpr(cond.Expression, engine, indent);
                 string cmt    = cond.TrailingComment != null ? $" {cond.TrailingComment}" : "";
@@ -539,6 +542,9 @@ internal static class RuleHelpers
             {
                 if (c is ConditionNode rest)
                 {
+                    // Standalone comments on their own line(s) above the condition.
+                    foreach (var lc in rest.LeadingComments)
+                        sb.Append($"\n{tabs}\t\t{lc}");
                     string prefix = rest.LogicalOp != null ? $"{rest.LogicalOp} " : "";
                     string cmt    = rest.TrailingComment != null ? $" {rest.TrailingComment}" : "";
                     sb.Append($"\n{tabs}\t\t{prefix}{EmitExpr(rest.Expression, engine, indent + 2)}{cmt}");

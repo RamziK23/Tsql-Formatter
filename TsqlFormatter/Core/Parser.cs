@@ -750,16 +750,31 @@ public sealed class Parser
     private List<AstNode> ParseConditionList(bool isJoinOn)
     {
         var list = new List<AstNode>();
-        string? logicalOp = null;
-        while (!IsAtEnd() && !IsConditionTerminator(isJoinOn))
+        while (!IsAtEnd())
         {
-            if (Peek().IsKeyword("AND")) { logicalOp = "and"; Advance(); continue; }
-            if (Peek().IsKeyword("OR"))  { logicalOp = "or";  Advance(); continue; }
+            int save = _pos;
+            // Standalone comments (own-line -- / block) before the next condition. Captured
+            // here so they never reach ParsePrimary (which would treat them as an operand).
+            var leading = new List<string>();
+            while (PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
+                leading.Add(Advance().Value);
+
+            string? logicalOp = null;
+            if (Peek().IsKeyword("AND")) { logicalOp = "and"; Advance(); }
+            else if (Peek().IsKeyword("OR")) { logicalOp = "or"; Advance(); }
+            // Comments between the operator and the condition also lead the condition.
+            while (PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
+                leading.Add(Advance().Value);
+
+            // No actual condition follows these comments/operator — rewind so the caller
+            // (or the graceful fallback) handles the leftover rather than us mis-parsing it.
+            if (IsAtEnd() || IsConditionTerminator(isJoinOn)) { _pos = save; break; }
+
             var expr = ParseExpression();
             // Inline comment on the same line (block or line) trails this condition.
             string? condComment = TryTakeSameLineInlineComment();
-            list.Add(new ConditionNode { LogicalOp = string.IsNullOrEmpty(logicalOp) ? null : logicalOp, Expression = expr, TrailingComment = condComment });
-            logicalOp = null;
+            list.Add(new ConditionNode { LogicalOp = logicalOp, Expression = expr, TrailingComment = condComment }
+                .Tap(c => c.LeadingComments.AddRange(leading)));
         }
         return list;
     }

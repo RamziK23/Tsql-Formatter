@@ -133,11 +133,72 @@ public static class TestRunner
         string idemColor = idemFailed == 0 ? Green : Red;
         Console.WriteLine($"{idemColor}idempotency: {idemChecked - idemFailed}/{idemChecked} stable{Reset}");
 
+        // ── Token preservation: the formatter must never lose or invent identifiers ──
+        // Compares the multiset of identifier / variable / quoted-identifier tokens between
+        // input and output. Catches dropped or duplicated columns (e.g. ". as cid", "as as").
+        // Comments, whitespace, keywords and punctuation are ignored, so legitimate style
+        // transforms (added "as", "inner join", lowercasing) don't count as divergences.
+        int tokChecked = 0, tokFailed = 0;
+        var tokFailures = new List<(string name, string diff)>();
+        foreach (var tc in cases)
+        {
+            string outp;
+            try { outp = Format(tc.Input); } catch { continue; }
+            tokChecked++;
+            var inIds  = IdentifierMultiset(tc.Input);
+            var outIds = IdentifierMultiset(outp);
+            if (!SameMultiset(inIds, outIds, out var diff))
+            {
+                tokFailed++;
+                tokFailures.Add((tc.Rule + " / " + tc.Name, diff));
+            }
+        }
+        if (tokFailed > 0)
+        {
+            Console.WriteLine($"\n{Yellow}═══ TOKEN-PRESERVATION FAILURES ═══{Reset}");
+            foreach (var (name, diff) in tokFailures)
+                Console.WriteLine($"{Red}● {name}{Reset}  {diff}");
+        }
+        string tokColor = tokFailed == 0 ? Green : Red;
+        Console.WriteLine($"{tokColor}identifier preservation: {tokChecked - tokFailed}/{tokChecked} intact{Reset}");
+
         // ── Summary ───────────────────────────────────────────────────────────
         int total = passed + failed;
-        string color = (failed == 0 && idemFailed == 0) ? Green : Red;
+        bool ok = failed == 0 && idemFailed == 0 && tokFailed == 0;
+        string color = ok ? Green : Red;
         Console.WriteLine($"\n{color}═══ {passed}/{total} passed, {failed} failed ═══{Reset}\n");
-        return (failed == 0 && idemFailed == 0) ? 0 : 1;
+        return ok ? 0 : 1;
+    }
+
+    /// <summary>Multiset (value → count) of identifier-like tokens in a SQL string:
+    /// identifiers, variables and quoted identifiers. Case-insensitive, because the formatter
+    /// legitimately lowercases keyword-like function names (e.g. OBJECT_ID → object_id).</summary>
+    static Dictionary<string, int> IdentifierMultiset(string sql)
+    {
+        var map = new Dictionary<string, int>();
+        foreach (var t in new Lexer(sql).Tokenize())
+        {
+            if (t.Type == TokenType.Identifier || t.Type == TokenType.Variable
+                || t.Type == TokenType.QuotedIdentifier)
+            {
+                var key = t.Value.ToLowerInvariant();
+                map[key] = map.TryGetValue(key, out var n) ? n + 1 : 1;
+            }
+        }
+        return map;
+    }
+
+    static bool SameMultiset(Dictionary<string, int> a, Dictionary<string, int> b, out string diff)
+    {
+        var lost = new List<string>();
+        var gained = new List<string>();
+        foreach (var kv in a)
+            if (!b.TryGetValue(kv.Key, out var n) || n < kv.Value) lost.Add($"{kv.Key}×{kv.Value - (b.TryGetValue(kv.Key, out var m) ? m : 0)}");
+        foreach (var kv in b)
+            if (!a.TryGetValue(kv.Key, out var n) || n < kv.Value) gained.Add($"{kv.Key}×{kv.Value - (a.TryGetValue(kv.Key, out var m) ? m : 0)}");
+        diff = (lost.Count > 0 ? "lost: " + string.Join(", ", lost) + "  " : "")
+             + (gained.Count > 0 ? "gained: " + string.Join(", ", gained) : "");
+        return lost.Count == 0 && gained.Count == 0;
     }
 
     static void PrintDiff(string expected, string actual)
