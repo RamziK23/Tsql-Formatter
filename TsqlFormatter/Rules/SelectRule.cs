@@ -125,6 +125,10 @@ public sealed class SelectRule : IFormatterRule
             }
         }
 
+        // ── OPTION (...) query hint — trailing line, never a WHERE condition ──
+        if (sel.OptionTokens != null)
+            sb.Append($"\n{tabs}option({RuleHelpers.EmitRawTokens(sel.OptionTokens)})");
+
         return sb.ToString();
     }
 

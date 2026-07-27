@@ -406,6 +406,22 @@ public sealed class Parser
         if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
         if (Peek().IsKeyword("HAVING")) { Advance(); node.WhereConditions.Add(new ConditionNode { LogicalOp = "having", Expression = ParseExpression() }); }
         if (Peek().IsKeyword("ORDER"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.OrderByColumns.AddRange(ParseOrderByList()); }
+        // OPTION (...) query hint — a trailing clause, not a WHERE condition.
+        if (Peek().IsKeyword("OPTION"))
+        {
+            Advance(); // OPTION
+            Expect(TokenType.LeftParen);
+            var optTokens = new List<Token>();
+            int depth = 1;
+            while (!IsAtEnd() && depth > 0)
+            {
+                var t = PeekRaw();
+                if (t.Type == TokenType.LeftParen)  depth++;
+                if (t.Type == TokenType.RightParen) { depth--; if (depth == 0) { AdvanceRaw(); break; } }
+                optTokens.Add(AdvanceRaw());
+            }
+            node.OptionTokens = optTokens;
+        }
         return node;
     }
 
@@ -756,6 +772,7 @@ public sealed class Parser
         var t = Peek();
         bool common = t.IsKeyword("GROUP") || t.IsKeyword("ORDER") || t.IsKeyword("HAVING")
             || t.IsKeyword("UNION") || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT")
+            || t.IsKeyword("OPTION") // OPTION (...) query hint ends the WHERE list
             || t.IsKeyword("END")    // terminates inside BEGIN blocks
             || t.IsKeyword("SELECT") || t.IsKeyword("INSERT") || t.IsKeyword("UPDATE")
             || t.IsKeyword("DELETE") || t.IsKeyword("CREATE") || t.IsKeyword("DROP")
@@ -1344,6 +1361,7 @@ public sealed class Parser
             || t.IsKeyword("ORDER") || t.IsKeyword("HAVING") || t.IsKeyword("UNION")
             || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT") || t.IsKeyword("SELECT")
             || t.IsKeyword("INTO")   // SELECT ... INTO #tbl — ends the column list
+            || t.IsKeyword("OPTION") // OPTION (...) query hint — ends list clauses
             || t.IsKeyword("END")  // terminates a column list inside BEGIN/END
             // A new statement keyword ends the column list of an assignment SELECT that has
             // no FROM, e.g. "select @x = 1 \n declare ..." or "... \n exec (...)".

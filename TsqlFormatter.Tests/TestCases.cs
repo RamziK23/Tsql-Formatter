@@ -195,6 +195,12 @@ public static class TestCases
             Expected = "select\n\ta\nfrom t\nwhere\n\tid in (\n\t\t--only active\n\t\tselect\n\t\t\tid\n\t\tfrom u\n\t\twhere\n\t\t\tu.x = 1\n\t)",
         },
 
+        new TestCase {
+            Rule = "option", Name = "OPTION (recompile) is a trailing clause, not a WHERE condition",
+            Input    = "select a from t where x = 1 option (recompile)\n--next statement comment\nselect 2 from u",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\noption(recompile)\n--next statement comment\nselect\n\t2\nfrom u",
+        },
+
         // ── 2.6 OR grouping ───────────────────────────────────────────────────
         new TestCase {
             Rule = "2.6", Name = "atomic OR (2.6.4)",

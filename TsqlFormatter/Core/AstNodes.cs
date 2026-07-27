@@ -67,6 +67,9 @@ public sealed class SelectStatementNode : AstNode
     /// <summary>Comments that preceded the SELECT keyword (e.g. inside "( --note\n select ...)").
     /// Rendered on their own line(s) above the select header.</summary>
     public List<string> LeadingComments { get; } = new();
+    /// <summary>Query hint clause: OPTION (...). Tokens inside the parens (excluding them),
+    /// or null when absent. Rendered as a trailing "option(...)" line, never as a condition.</summary>
+    public List<Token>? OptionTokens { get; set; }
 }
 
 /// <summary>
