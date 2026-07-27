@@ -366,6 +366,15 @@ public sealed class Parser
         node.LeadingComments.AddRange(leadingComments);
         if (ctes != null) node.CteDefinitions.AddRange(ctes);
         node.Columns.AddRange(ParseSelectColumns());
+        // SELECT ... INTO #tbl / ##global / schema.table / [quoted]
+        if (Peek().IsKeyword("INTO"))
+        {
+            Advance();
+            var nameSb = new System.Text.StringBuilder();
+            nameSb.Append(Advance().Value);
+            while (PeekIs(TokenType.Dot)) { nameSb.Append(Advance().Value); nameSb.Append(Advance().Value); }
+            node.IntoTable = nameSb.ToString();
+        }
         if (Peek().IsKeyword("FROM"))
         {
             Advance();
@@ -1323,6 +1332,7 @@ public sealed class Parser
         return t.IsKeyword("FROM") || t.IsKeyword("WHERE") || t.IsKeyword("GROUP")
             || t.IsKeyword("ORDER") || t.IsKeyword("HAVING") || t.IsKeyword("UNION")
             || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT") || t.IsKeyword("SELECT")
+            || t.IsKeyword("INTO")   // SELECT ... INTO #tbl — ends the column list
             || t.IsKeyword("END")  // terminates a column list inside BEGIN/END
             // A new statement keyword ends the column list of an assignment SELECT that has
             // no FROM, e.g. "select @x = 1 \n declare ..." or "... \n exec (...)".
@@ -1340,7 +1350,8 @@ public sealed class Parser
         t.IsKeyword("FROM") || t.IsKeyword("WHERE") || t.IsKeyword("GROUP") || t.IsKeyword("ORDER")
         || t.IsKeyword("HAVING") || t.IsKeyword("UNION") || t.IsKeyword("INNER") || t.IsKeyword("LEFT")
         || t.IsKeyword("RIGHT") || t.IsKeyword("JOIN") || t.IsKeyword("ON") || t.IsKeyword("SELECT")
-        || t.IsKeyword("WITH") || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT") || t.IsKeyword("END");
+        || t.IsKeyword("WITH") || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT") || t.IsKeyword("END")
+        || t.IsKeyword("INTO");
 
     private Token Peek()
     {

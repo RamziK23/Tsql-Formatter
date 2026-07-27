@@ -59,6 +59,10 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"\n{tabs}\t{leading}{colStr}{alias}{comma}{comment}");
         }
 
+        // ── INTO (SELECT ... INTO #tbl) ───────────────────────────────────────
+        if (sel.IntoTable != null)
+            sb.Append($"\n{tabs}into {sel.IntoTable}");
+
         // ── FROM ──────────────────────────────────────────────────────────────
         if (sel.FromClauses.Count > 0)
         {

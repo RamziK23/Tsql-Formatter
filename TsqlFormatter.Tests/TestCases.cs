@@ -35,6 +35,13 @@ public static class TestCases
             Expected = "select\n\tcount(*)\nfrom t\ngroup by\n\ta\norder by\n\ta",
         },
 
+        // ── SELECT ... INTO #tbl (bug 1) ──────────────────────────────────────
+        new TestCase {
+            Rule = "into", Name = "select ... into #tmp on its own line between columns and from",
+            Input    = "select a, b into #tmp from t where x = 1",
+            Expected = "select\n\ta,\n\tb\ninto #tmp\nfrom t\nwhere\n\tx = 1",
+        },
+
         // ── 2.2 join ───────────────────────────────────────────────────────────
         new TestCase {
             Rule = "2.2", Name = "inner join, on first condition on same line",

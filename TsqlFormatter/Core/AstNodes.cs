@@ -53,6 +53,8 @@ public sealed class SelectStatementNode : AstNode
 {
     public string? TopExpr { get; init; }
     public bool IsDistinct { get; init; }
+    /// <summary>Target of SELECT ... INTO #tbl (table name), or null.</summary>
+    public string? IntoTable { get; set; }
     public List<SelectColumnNode> Columns { get; } = new();
     public List<AstNode> FromClauses { get; } = new();
     public List<AstNode> WhereConditions { get; } = new();
