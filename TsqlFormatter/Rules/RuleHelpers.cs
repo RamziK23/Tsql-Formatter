@@ -212,8 +212,10 @@ internal static class RuleHelpers
 
     public static string EmitSubQuery(SubQueryNode sq, FormatterEngine engine, int indent)
     {
+        // A comment on the same line as '(' stays on that line (trailing the open paren).
+        var open = sq.OpenComment != null ? TrailingCommentSuffix(sq.OpenComment) : "";
         var inner = engine.Format(sq.Select, indent + 1);
-        return $"(\n{inner}\n{Tabs(indent)})";
+        return $"({open}\n{inner}\n{Tabs(indent)})";
     }
 
     private static string EmitFunction(FunctionCallNode fn, FormatterEngine engine, int indent)

@@ -813,10 +813,11 @@ public sealed class Parser
                 Advance(); // not
                 Advance(); // exists
                 Expect(TokenType.LeftParen);
+                var openC = TryTakeSameLineInlineComment();
                 var sub = ParseSelectOrSet(null);
                 Expect(TokenType.RightParen);
                 return new FunctionCallNode { Name = "EXISTS", IsKeywordFunction = true, Negated = true }
-                    .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub }));
+                    .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub, OpenComment = openC }));
             }
             if (nxt.Type == TokenType.LeftParen)
             {
@@ -841,13 +842,13 @@ public sealed class Parser
         {
             var next = PeekAt(1);
             if (next.IsKeyword("IN"))   { Advance(); Advance(); Expect(TokenType.LeftParen);
-                if (PeekPastComments().IsKeyword("SELECT")) { var sub = ParseSelectOrSet(null); Expect(TokenType.RightParen); return new InExprNode { Left = left, Negated = true, SubQuery = new SubQueryNode { Select = sub } }; }
+                if (PeekPastComments().IsKeyword("SELECT")) { var openC = TryTakeSameLineInlineComment(); var sub = ParseSelectOrSet(null); Expect(TokenType.RightParen); return new InExprNode { Left = left, Negated = true, SubQuery = new SubQueryNode { Select = sub, OpenComment = openC } }; }
                 var v = ParseInList(); Expect(TokenType.RightParen); return new InExprNode { Left = left, Negated = true }.Tap(n => n.Values.AddRange(v)); }
             if (next.IsKeyword("LIKE")) { Advance(); Advance(); return new LikeExprNode { Left = left, Pattern = ParseAdditive() }; }
             if (next.IsKeyword("BETWEEN")) { Advance(); Advance(); var lo = ParseAdditive(); Expect(TokenType.Keyword, "AND"); var hi = ParseAdditive(); return new BetweenExprNode { Left = left, Low = lo, High = hi }; }
         }
         if (op.IsKeyword("IN"))     { Advance(); Expect(TokenType.LeftParen);
-            if (PeekPastComments().IsKeyword("SELECT")) { var sub = ParseSelectOrSet(null); Expect(TokenType.RightParen); return new InExprNode { Left = left, SubQuery = new SubQueryNode { Select = sub } }; }
+            if (PeekPastComments().IsKeyword("SELECT")) { var openC = TryTakeSameLineInlineComment(); var sub = ParseSelectOrSet(null); Expect(TokenType.RightParen); return new InExprNode { Left = left, SubQuery = new SubQueryNode { Select = sub, OpenComment = openC } }; }
             var v = ParseInList(); Expect(TokenType.RightParen); return new InExprNode { Left = left }.Tap(n => n.Values.AddRange(v)); }
         if (op.IsKeyword("LIKE"))   { Advance(); return new LikeExprNode { Left = left, Pattern = ParseAdditive() }; }
         if (op.IsKeyword("BETWEEN")){ Advance(); var lo = ParseAdditive(); Expect(TokenType.Keyword, "AND"); var hi = ParseAdditive(); return new BetweenExprNode { Left = left, Low = lo, High = hi }; }
@@ -940,10 +941,11 @@ public sealed class Parser
         {
             Advance(); // exists
             Expect(TokenType.LeftParen);
+            var openC = TryTakeSameLineInlineComment();
             var sub = ParseSelectOrSet(null);
             Expect(TokenType.RightParen);
             return new FunctionCallNode { Name = "EXISTS", IsKeywordFunction = true }
-                .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub }));
+                .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub, OpenComment = openC }));
         }
 
         // Function call: identifier/keyword followed by (

@@ -196,9 +196,9 @@ public static class TestCases
 
         // ── bug 0/3: comment before a subquery SELECT must not desync the parser ─
         new TestCase {
-            Rule = "parse-safety", Name = "comment between ( and select renders above select, subquery intact",
+            Rule = "parse-safety", Name = "same-line comment after ( stays on the exists ( line",
             Input    = "select a from t where exists (\t--note\n select 1 from u where u.x = 1)",
-            Expected = "select\n\ta\nfrom t\nwhere\n\texists (\n\t\t--note\n\t\tselect\n\t\t\t1\n\t\tfrom u\n\t\twhere\n\t\t\tu.x = 1\n\t)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\texists (\t\t--note\n\t\tselect\n\t\t\t1\n\t\tfrom u\n\t\twhere\n\t\t\tu.x = 1\n\t)",
         },
 
         new TestCase {

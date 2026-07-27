@@ -253,6 +253,9 @@ public sealed class IsNullExprNode : AstNode
 public sealed class SubQueryNode : AstNode
 {
     public AstNode Select { get; init; } = null!;   // SelectStatementNode or SetOperationNode
+    /// <summary>A comment on the SAME line as the opening '(' (e.g. "exists ( --note").
+    /// Rendered right after the '(', so it stays on that line instead of above the select.</summary>
+    public string? OpenComment { get; set; }
 }
 
 public sealed class FunctionCallNode : AstNode
