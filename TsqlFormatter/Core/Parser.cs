@@ -599,7 +599,9 @@ public sealed class Parser
         Advance(); // INSERT
         if (Peek().IsKeyword("INTO")) Advance(); // optional INTO
 
-        var table = ParseTableRef();
+        // INSERT target: parse the table name only. A following '(' is the column list,
+        // never table-valued-function arguments — so suppress func-arg consumption.
+        var table = ParseTableRef(allowFuncArgs: false);
 
         // Optional column list: INSERT INTO t (col1, col2)
         var columns = new List<AstNode>();
@@ -826,7 +828,7 @@ public sealed class Parser
     //  FROM / JOIN
     // ═══════════════════════════════════════════════════════════════════════════
 
-    private TableRefNode ParseTableRef()
+    private TableRefNode ParseTableRef(bool allowFuncArgs = true)
     {
         // Subquery as table source: (SELECT ...) AS alias
         if (PeekIs(TokenType.LeftParen))
@@ -845,9 +847,10 @@ public sealed class Parser
         nameParts.Add(Advance());
         while (PeekIs(TokenType.Dot)) { nameParts.Add(Advance()); nameParts.Add(Advance()); }
 
-        // Function-valued table source: name(arg1, arg2, ...) — e.g. openjson(col) or STRING_SPLIT(col, ',')
+        // Function-valued table source: name(arg1, arg2, ...) — e.g. openjson(col) or STRING_SPLIT(col, ',').
+        // Suppressed for INSERT targets, where a following '(' is always the column list.
         List<AstNode>? funcArgs = null;
-        if (PeekIs(TokenType.LeftParen))
+        if (allowFuncArgs && PeekIs(TokenType.LeftParen))
         {
             Advance(); // (
             funcArgs = new List<AstNode>();
@@ -1037,14 +1040,14 @@ public sealed class Parser
         return left;
     }
 
-    /// <summary>Handles +, -, string concatenation.</summary>
+    /// <summary>Handles +, -, string concatenation, and bitwise &amp; | ^ (same precedence in T-SQL).</summary>
     private AstNode ParseAdditive()
     {
         var left = ParseMultiplicative();
         while (true)
         {
             var op = Peek();
-            if (op.Type is not (TokenType.Plus or TokenType.Minus)) break;
+            if (op.Type is not (TokenType.Plus or TokenType.Minus or TokenType.BitwiseOp)) break;
             // Don't consume Minus that could start a negative number literal in a list context
             Advance();
             var right = ParseMultiplicative();

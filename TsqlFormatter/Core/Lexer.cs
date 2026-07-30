@@ -92,6 +92,9 @@ public sealed class Lexer
             '*' => ReadSingle(TokenType.Multiply),
             '/' => ReadSingle(TokenType.Divide),
             '%' => ReadSingle(TokenType.Percent),
+            '&' => ReadSingle(TokenType.BitwiseOp),
+            '|' => ReadSingle(TokenType.BitwiseOp),
+            '^' => ReadSingle(TokenType.BitwiseOp),
             _ => ReadSingle(TokenType.Unknown)
         };
     }

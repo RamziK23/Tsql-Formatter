@@ -102,7 +102,23 @@ public static class TestCases
         new TestCase {
             Rule = "2.12", Name = "insert into ... values",
             Input    = "insert into dbo.t (a, b, c) values (1, 2, 3)",
-            Expected = "insert into dbo.t(a, b, c)\nvalues\n\t(1, 2, 3)",
+            Expected = "insert into dbo.t(\n\ta,\n\tb,\n\tc\n)\nvalues\n\t(1, 2, 3)",
+        },
+        new TestCase {
+            Rule = "2.12", Name = "insert column list only (no source), each col own line",
+            Input    = "insert into #process(object_type, object_id, object_title)",
+            Expected = "insert into #process(\n\tobject_type,\n\tobject_id,\n\tobject_title\n)",
+        },
+        new TestCase {
+            Rule = "2.12", Name = "insert column list + select source",
+            Input    = "insert into dbo.t (a, b) select x, y from src",
+            Expected = "insert into dbo.t(\n\ta,\n\tb\n)\nselect\n\tx,\n\ty\nfrom src",
+        },
+        // ── bitwise operators stay inline (same precedence as + -) ─────────────
+        new TestCase {
+            Rule = "expr", Name = "bitwise & stays inline in where",
+            Input    = "select 1 from t main where main.gr&power(2,0)=0",
+            Expected = "select\n\t1\nfrom t as main\nwhere\n\tmain.gr & power(2, 0) = 0",
         },
 
         // ── 5.1 alias via = → as ──────────────────────────────────────────────

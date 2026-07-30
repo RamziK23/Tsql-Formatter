@@ -26,6 +26,7 @@ public enum TokenType
     Multiply,
     Divide,
     Percent,
+    BitwiseOp,        // & | ^ (bitwise AND / OR / XOR)
     CompoundAssign,   // += -= *= /= %= &= |= ^=
     LineComment,
     BlockComment,
