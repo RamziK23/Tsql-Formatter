@@ -525,6 +525,18 @@ group by
 	p.[FirstName]
 ```
 
+### `having` — HAVING: ключевое слово на своей строке, условие с +1 табом (как `where`)
+
+```sql
+-- вход
+... group by a having max(x) between @b and @e
+-- результат
+group by
+	a
+having
+	max(x) between @b and @e
+```
+
 ### `orderby` — ORDER BY: каждый элемент на своей строке (даже один); ASC/DESC сохраняются; HAVING поддержан
 
 ```sql
@@ -605,6 +617,20 @@ select
 		else 'other'
 	end as l
 from t
+```
+
+Несколько условий в одном `when` соединяются через `and` — оператор в **нижнем регистре** и в начале следующей строки (+1 таб), а не хвостом предыдущей:
+
+```sql
+-- вход
+case when cp.cid is not null and cp.[end] is null then '2100-01-01' ... end
+-- результат
+case
+	when cp.cid is not null
+		and cp.[end] is null
+	then '2100-01-01'
+	...
+end
 ```
 
 ### `aggdistinct` / `collate` / `exists` / `paren` — Прочие выражения

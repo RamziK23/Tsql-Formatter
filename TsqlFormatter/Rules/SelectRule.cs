@@ -110,8 +110,12 @@ public sealed class SelectRule : IFormatterRule
         }
 
         // ── HAVING ────────────────────────────────────────────────────────────
+        // Like WHERE: the keyword on its own line, the condition on the next line (+1 tab).
         if (havingCond != null)
-            sb.Append($"\n{tabs}having {RuleHelpers.EmitExpr(havingCond.Expression, engine, indent)}");
+        {
+            sb.Append($"\n{tabs}having");
+            sb.Append($"\n{RuleHelpers.Tabs(indent + 1)}{RuleHelpers.EmitExpr(havingCond.Expression, engine, indent + 1)}");
+        }
 
         // ── ORDER BY ─────────────────────────────────────────────────────────
         // Every item on its own indented line, regardless of count.

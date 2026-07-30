@@ -329,6 +329,17 @@ public static class TestCases
             Input    = "select case when a = 1 then case when b = 2 then 'x' else 'y' end else 'z' end from t",
             Expected = "select\n\tcase\n\t\twhen a = 1\n\t\tthen case\n\t\t\twhen b = 2\n\t\t\tthen 'x'\n\t\t\telse 'y'\n\t\tend\n\t\telse 'z'\n\tend\nfrom t",
         },
+        new TestCase {
+            Rule = "2.5", Name = "case when with AND: lowercase 'and' starts continuation line",
+            Input    = "select case when a is null and b is null then 'x' else 'y' end from t",
+            Expected = "select\n\tcase\n\t\twhen a is null\n\t\t\tand b is null\n\t\tthen 'x'\n\t\telse 'y'\n\tend\nfrom t",
+        },
+        // ── having: keyword on own line, condition indented like where ─────────
+        new TestCase {
+            Rule = "having", Name = "having condition on its own indented line",
+            Input    = "select a, count(*) from t group by a having count(*) between 1 and 10",
+            Expected = "select\n\ta,\n\tcount(*)\nfrom t\ngroup by\n\ta\nhaving\n\tcount(*) between 1 and 10",
+        },
 
         // ── 2.7 update ... set ... from (detailed) ────────────────────────────
         new TestCase {

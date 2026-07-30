@@ -300,9 +300,11 @@ internal static class RuleHelpers
             var conditions = wc.Conditions.Select((c, idx) =>
             {
                 string cStr = EmitExpr(c, engine, indent + 1);
-                return idx == 0 ? cStr : $"\n{Tabs(indent + 2)}{cStr}";
+                // Continuation conditions start the next line with a lowercase "and",
+                // rather than trailing "AND" at the end of the previous line.
+                return idx == 0 ? cStr : $"\n{Tabs(indent + 2)}and {cStr}";
             });
-            string condStr = string.Join($" AND", conditions);
+            string condStr = string.Concat(conditions);
             string thenStr = EmitExpr(wc.Then, engine, indent + 1);
             string thenComment = wc.ThenComment != null ? $"{Tabs(2)}{wc.ThenComment}" : "";
             // when and then on separate lines, both at the same indent
