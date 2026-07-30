@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TsqlFormatter.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+10268b8bb111ac7e26210af44adb3a49bf2d0cfe")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3c0e37f498ff5dd1e95ebea8ca3cffdc0f8993a1")]
 [assembly: System.Reflection.AssemblyProductAttribute("TsqlFormatter.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TsqlFormatter.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
