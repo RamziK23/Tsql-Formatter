@@ -49,9 +49,14 @@ public sealed class Parser
                 if (IsGoKeyword())
                 {
                     AdvanceRaw();
+                    // "GO 5" repeats the batch 5 times — the count must be preserved.
+                    string? goCount = null;
+                    var cnt = PeekSameLine();
+                    if (cnt != null && cnt.Type == TokenType.NumberLiteral)
+                    { goCount = cnt.Value; Advance(); }
                     // A GO before any statement is meaningless — drop it.
                     if (script.Statements.Count > 0)
-                        script.Statements.Add(new GoSeparatorNode());
+                        script.Statements.Add(new GoSeparatorNode { Count = goCount });
                     continue;
                 }
                 break;
@@ -67,12 +72,17 @@ public sealed class Parser
             isFirstStatement = false;
 
             int beforeStmt = _pos;
+            // A ';' before WITH is mandatory in T-SQL (the previous statement must be
+            // terminated) — remember it so FormatScript can re-emit ";with ...".
+            bool nextIsWith = Peek().IsKeyword("WITH");
             var stmt = ParseStatement();
             // Forward-progress guarantee: never allow a zero-consumption iteration to loop
             // forever. If a statement was somehow not advanced, consume one token and move on.
             if (_pos == beforeStmt) { AdvanceRaw(); continue; }
             if (stmt != null)
             {
+                if (hadSemicolon && nextIsWith && script.Statements.Count > 0)
+                    stmt.LeadingSemicolon = true;
                 // Preserve a blank line that existed before this statement in the source.
                 if (newlinesBefore >= 2 && script.Statements.Count > 0)
                     stmt.BlankLineBefore = true;
@@ -160,12 +170,14 @@ public sealed class Parser
         catch { /* fall through */ }
         _pos = save;
 
-        // Bare column list: "a, b, count(*) as cnt"
+        // Bare column list: "a, b, count(*) as cnt". At least TWO comma-separated columns
+        // are required — otherwise any unrecognized two-word statement ("use mydb",
+        // "waitfor delay '…'") would be "formatted" into a bogus "x as y" column.
         save = _pos;
         try
         {
             var cols = ParseSelectColumns();
-            if (cols.Count > 0 && AtFragmentEnd())
+            if (cols.Count >= 2 && AtFragmentEnd())
             {
                 var node = new ColumnListFragmentNode();
                 node.Columns.AddRange(cols);
@@ -352,6 +364,56 @@ public sealed class Parser
         return new SetNode { Target = target, Op = op, Value = val };
     }
 
+    /// <summary>True at TRAN / TRANSACTION / DISTRIBUTED (the words that make a BEGIN a
+    /// transaction statement rather than a block).</summary>
+    private static bool IsTransactionWord(Token t) =>
+        t.IsKeyword("TRANSACTION")
+        || t.Value.Equals("TRAN", StringComparison.OrdinalIgnoreCase)
+        || t.Value.Equals("DISTRIBUTED", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// BEGIN [DISTRIBUTED] TRAN[SACTION] [name] | COMMIT [TRAN[SACTION]|WORK] [name]
+    /// | ROLLBACK [TRAN[SACTION]|WORK] [name]. Emitted as a raw statement; the transaction
+    /// keywords are lowercased, a name keeps its case. The optional name/qualifier is taken
+    /// only from the SAME line, so the next statement is never swallowed as a "name".
+    /// </summary>
+    private AstNode ParseTransactionStatement()
+    {
+        var raw = new RawTokensNode();
+        raw.Tokens.Add(Lowered(Advance()));                   // begin / commit / rollback
+        // Same-line qualifiers: [distributed] tran|transaction|work
+        while (true)
+        {
+            var q = PeekSameLine();
+            if (q != null && (IsTransactionWord(q) || q.Value.Equals("WORK", StringComparison.OrdinalIgnoreCase)))
+                raw.Tokens.Add(Lowered(Advance()));
+            else break;
+        }
+        // Optional same-line transaction/savepoint name.
+        var name = PeekSameLine();
+        if (name != null
+            && name.Type is TokenType.Identifier or TokenType.QuotedIdentifier or TokenType.Variable
+            && !IsGoKeyword())
+            raw.Tokens.Add(Advance());
+        // The trailing ';' is left for the statement loop: it both separates statements and
+        // marks a following WITH as needing its ";with" prefix.
+        return raw;
+    }
+
+    /// <summary>Lowercases keyword and transaction-word tokens for uniform "begin tran" output.</summary>
+    private static Token Lowered(Token t) => new Token(t.Type, t.Value.ToLowerInvariant(), t.Line, t.Column);
+
+    /// <summary>Peeks the next meaningful token only if it sits on the SAME line
+    /// (no newline between here and it); returns null otherwise.</summary>
+    private Token? PeekSameLine()
+    {
+        int i = _pos;
+        while (i < _tokens.Count && _tokens[i].Type == TokenType.Whitespace) i++;
+        if (i < _tokens.Count && _tokens[i].Type is not (TokenType.Newline or TokenType.EndOfFile))
+            return _tokens[i];
+        return null;
+    }
+
     private AstNode? ParseStatement()
     {
         // Programmable objects (CREATE/ALTER FUNCTION|PROCEDURE|PROC|TRIGGER): parse header +
@@ -365,6 +427,12 @@ public sealed class Parser
         if (tok.IsKeyword("INSERT"))               return ParseInsert();
         if (tok.IsKeyword("UPDATE"))               return ParseUpdate();
         if (tok.IsKeyword("DELETE"))               return ParseDelete();
+        // BEGIN TRAN[SACTION] is a transaction statement, NOT a BEGIN...END block:
+        // parsing it as a block would swallow following statements and fabricate an "end".
+        if (tok.IsKeyword("BEGIN") && IsTransactionWord(PeekAt(1)))
+            return ParseTransactionStatement();
+        if (tok.IsKeyword("COMMIT") || tok.IsKeyword("ROLLBACK"))
+            return ParseTransactionStatement();
         if (tok.IsKeyword("BEGIN"))                return ParseBeginEnd();
         if (tok.IsKeyword("CREATE"))               return ParseCreate();
         if (tok.IsKeyword("DROP"))                 return ParseDrop();
@@ -569,7 +637,7 @@ public sealed class Parser
         }
         if (Peek().IsKeyword("WHERE"))  { Advance(); node.WhereConditions.AddRange(ParseConditionList(isJoinOn: false)); }
         if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
-        if (Peek().IsKeyword("HAVING")) { Advance(); node.WhereConditions.Add(new ConditionNode { LogicalOp = "having", Expression = ParseExpression() }); }
+        if (Peek().IsKeyword("HAVING")) { Advance(); node.HavingConditions.AddRange(ParseConditionList(isJoinOn: false)); }
         if (Peek().IsKeyword("ORDER"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.OrderByColumns.AddRange(ParseOrderByList()); }
         // OPTION (...) query hint — a trailing clause, not a WHERE condition.
         if (Peek().IsKeyword("OPTION"))
@@ -811,15 +879,25 @@ public sealed class Parser
                 else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier
                          && !IsClauseKeyword(Peek()) && !IsGoKeyword())
                     alias = Advance();
+                // Non-reserved words lex as Keyword but are legal bare aliases (day, year,
+                // key, ...): "select getdate() day" must not split into two columns.
+                else if (Peek().Type == TokenType.Keyword
+                         && !IsSelectClauseKeyword() && !IsClauseKeyword(Peek()))
+                    alias = Advance();
             }
             // Only a comment on the SAME line is a trailing comment for this column.
             if (comment == null) comment = TryTakeSameLineComment();
-            if (PeekIs(TokenType.Comma)) Advance();
+            bool sawComma = PeekIs(TokenType.Comma);
+            if (sawComma) Advance();
             // A trailing comment may also sit AFTER the comma on the same line: "a, --note"
             // or "a, /* note */". A block comment there is transparent — glued to this column.
             if (comment == null) comment = TryTakeSameLineInlineComment();
             cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment }
                 .Tap(c => c.LeadingComments.AddRange(leadingComments)));
+            // Columns are comma-separated: with no comma, the next token can't start another
+            // column — it's the next statement ("select 1 \n use db"), which must not be
+            // swallowed into the list with an invented comma.
+            if (!sawComma) break;
         }
         return cols;
     }
@@ -951,6 +1029,11 @@ public sealed class Parser
             // (or the graceful fallback) handles the leftover rather than us mis-parsing it.
             if (IsAtEnd() || IsConditionTerminator(isJoinOn)) { _pos = save; break; }
 
+            // Conditions chain with and/or. A follow-up token without an operator is not a
+            // condition — it's the next statement ("where x = 1 \n open cur") and must not be
+            // swallowed into the WHERE list.
+            if (list.Count > 0 && logicalOp == null) { _pos = save; break; }
+
             var expr = ParseExpression();
             // Inline comment on the same line (block or line) trails this condition.
             string? condComment = TryTakeSameLineInlineComment();
@@ -974,6 +1057,7 @@ public sealed class Parser
             || t.IsKeyword("RETURN") || t.IsKeyword("SET")  || t.IsKeyword("WHILE")
             || t.IsKeyword("IF")     || t.IsKeyword("ELSE") || t.IsKeyword("PRINT")
             || t.IsKeyword("EXEC")   || t.IsKeyword("EXECUTE")
+            || t.IsKeyword("COMMIT") || t.IsKeyword("ROLLBACK")
             || t.Type == TokenType.EndOfFile || t.Type == TokenType.RightParen
             || t.Type == TokenType.Semicolon || IsGoKeyword();
         if (isJoinOn) return common || t.IsKeyword("WHERE") || IsJoinKeyword();
@@ -1341,8 +1425,15 @@ public sealed class Parser
         while (Peek().IsKeyword("WHEN"))
         {
             Advance();
-            var conds = new List<AstNode>(); conds.Add(ParseExpression());
-            while (Peek().IsKeyword("AND")) { Advance(); conds.Add(ParseExpression()); }
+            // Conditions chain with and/or; each keeps its operator so the emitter can
+            // render "or" continuations too (previously OR failed the whole parse).
+            var conds = new List<AstNode> { new ConditionNode { Expression = ParseExpression() } };
+            while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+            {
+                string op = Peek().IsKeyword("AND") ? "and" : "or";
+                Advance();
+                conds.Add(new ConditionNode { LogicalOp = op, Expression = ParseExpression() });
+            }
             Expect(TokenType.Keyword, "THEN");
             var then = ParseExpression(); string? tc = null;
             if (PeekIs(TokenType.LineComment)) tc = Advance().Value;
@@ -1459,7 +1550,11 @@ public sealed class Parser
             // inside the block that no sub-parser will take), stop instead of spinning forever.
             if (_pos == before) break;
         }
-        if (Peek().IsKeyword("END")) Advance(); // END
+        // A BEGIN with no matching END must NOT fabricate one — an invented "end" token
+        // breaks the script. Bail out so the source is returned unchanged.
+        if (!Peek().IsKeyword("END"))
+            throw new ParseException($"BEGIN block has no matching END (unexpected [{Peek().Type}] '{Peek().Value}').");
+        Advance(); // END
         return node;
     }
 
@@ -1599,6 +1694,7 @@ public sealed class Parser
                 || t.IsKeyword("UPDATE") || t.IsKeyword("DELETE")
                 || t.IsKeyword("DROP")  || t.IsKeyword("CREATE") || t.IsKeyword("BEGIN")
                 || t.IsKeyword("IF")    || t.IsKeyword("WHILE")  || t.IsKeyword("RETURN")
+                || t.IsKeyword("COMMIT")|| t.IsKeyword("ROLLBACK")
                 || t.Type == TokenType.DeclareKeyword
                 || t.Type == TokenType.EndOfFile || IsGoKeyword()) break;
             raw.Tokens.Add(Advance());
@@ -1626,6 +1722,7 @@ public sealed class Parser
             || t.IsKeyword("EXEC")   || t.IsKeyword("EXECUTE")|| t.IsKeyword("IF")
             || t.IsKeyword("WHILE")  || t.IsKeyword("RETURN") || t.IsKeyword("PRINT")
             || t.IsKeyword("MERGE")  || t.IsKeyword("TRUNCATE")
+            || t.IsKeyword("SET")    || t.IsKeyword("COMMIT") || t.IsKeyword("ROLLBACK")
             || t.Type == TokenType.DeclareKeyword
             || t.Type == TokenType.EndOfFile || t.Type == TokenType.RightParen
             || t.Type == TokenType.Semicolon || IsGoKeyword();
@@ -1640,7 +1737,8 @@ public sealed class Parser
         || t.IsKeyword("BEGIN")  || t.IsKeyword("END")    || t.IsKeyword("EXEC")
         || t.IsKeyword("EXECUTE")|| t.IsKeyword("IF")     || t.IsKeyword("WHILE")
         || t.IsKeyword("RETURN") || t.IsKeyword("PRINT")  || t.IsKeyword("MERGE")
-        || t.IsKeyword("TRUNCATE")
+        || t.IsKeyword("TRUNCATE") || t.IsKeyword("SET")
+        || t.IsKeyword("COMMIT") || t.IsKeyword("ROLLBACK")
         || t.Type == TokenType.EndOfFile || t.Type == TokenType.Semicolon
         || (t.Type == TokenType.Identifier && t.Value.Equals("GO", StringComparison.OrdinalIgnoreCase));
 

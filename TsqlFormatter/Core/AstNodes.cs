@@ -21,6 +21,14 @@ public abstract class AstNode
     /// statements instead of always forcing one.
     /// </summary>
     public bool BlankLineBefore { get; set; }
+
+    /// <summary>
+    /// True when the source had a ';' right before this statement AND the statement starts
+    /// with WITH (a CTE). T-SQL requires the previous statement to be terminated with a
+    /// semicolon before WITH, so dropping it would break the script — it is re-emitted
+    /// as a ";with ..." prefix.
+    /// </summary>
+    public bool LeadingSemicolon { get; set; }
 }
 
 // ─── Script root ─────────────────────────────────────────────────────────────
@@ -59,7 +67,8 @@ public sealed class SelectStatementNode : AstNode
     public List<AstNode> FromClauses { get; } = new();
     public List<AstNode> WhereConditions { get; } = new();
     public List<AstNode> GroupByColumns { get; } = new();
-    public AstNode? HavingClause { get; init; }
+    /// <summary>HAVING conditions: first item without operator, the rest with and/or.</summary>
+    public List<AstNode> HavingConditions { get; } = new();
     public List<AstNode> OrderByColumns { get; } = new();
     public List<AstNode> CteDefinitions { get; } = new();
     /// <summary>Standalone comments that trailed the FROM/JOIN block (before WHERE/GROUP/etc).</summary>
@@ -178,11 +187,6 @@ public sealed class ConditionNode : AstNode
     /// <summary>Standalone comments on their own line(s) before this condition (e.g. a
     /// commented-out "--and x = 1"). Rendered above the condition, never inline.</summary>
     public List<string> LeadingComments { get; } = new();
-}
-
-public sealed class OrGroupNode : AstNode
-{
-    public List<AstNode> Conditions { get; } = new();
 }
 
 // ─── Expressions ─────────────────────────────────────────────────────────────
@@ -306,7 +310,12 @@ public sealed class ColumnRefNode : AstNode
     public string? TrailingComment { get; set; }
 }
 
-public sealed class GoSeparatorNode : AstNode { }
+public sealed class GoSeparatorNode : AstNode
+{
+    /// <summary>Optional repeat count on the same line: "GO 5" runs the batch 5 times.
+    /// Must be preserved, or the batch silently stops repeating.</summary>
+    public string? Count { get; set; }
+}
 
 // ─── Fragment nodes (for formatting partial selections) ──────────────────────
 

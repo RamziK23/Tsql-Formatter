@@ -8,7 +8,11 @@ public sealed class GoSeparatorRule : IFormatterRule
 {
     public bool CanHandle(AstNode node) => node is GoSeparatorNode;
 
-    public string Format(AstNode node, FormatterEngine engine, int indent) => "GO";
+    public string Format(AstNode node, FormatterEngine engine, int indent)
+    {
+        var go = (GoSeparatorNode)node;
+        return go.Count != null ? $"GO {go.Count}" : "GO";
+    }
 }
 
 }

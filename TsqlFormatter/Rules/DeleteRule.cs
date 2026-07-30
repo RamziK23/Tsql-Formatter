@@ -50,20 +50,12 @@ public sealed class DeleteRule : IFormatterRule
             }
         }
 
-        // WHERE (rule 2.6: OR wrapped in brackets)
+        // WHERE — same flat layout as SELECT (rule where-or: no outer parens are added,
+        // and/or start their lines, source paren groups are preserved by the parser).
         if (del.WhereConditions.Count > 0)
         {
-            if (RuleHelpers.HasOrConditions(del.WhereConditions))
-            {
-                sb.Append($"\n{tabs}where\n");
-                sb.Append(RuleHelpers.EmitOrGroupConditions(del.WhereConditions, engine, indent));
-            }
-            else
-            {
-                // Every condition on its own indented line, even a single one.
-                sb.Append($"\n{tabs}where");
-                sb.Append($"\n{RuleHelpers.EmitConditions(del.WhereConditions, engine, indent + 1)}");
-            }
+            sb.Append($"\n{tabs}where");
+            sb.Append($"\n{RuleHelpers.EmitConditions(del.WhereConditions, engine, indent + 1)}");
         }
 
         return sb.ToString();

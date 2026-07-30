@@ -90,6 +90,11 @@ public sealed class FormatterEngine
 
             var formatted = text.TrimEnd();
 
+            // Re-emit the mandatory ';' before a WITH (CTE) statement — T-SQL requires the
+            // previous statement to be terminated, so dropping it would break the script.
+            if (stmt.LeadingSemicolon)
+                formatted = ";" + formatted;
+
             // A standalone comment attaches to the FOLLOWING statement with a single newline
             // (no blank line between the comment and what it annotates).
             if (IsCommentOnly(stmt))

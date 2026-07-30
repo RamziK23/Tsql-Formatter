@@ -35,8 +35,13 @@ internal static class RuleHelpers
                     t.Type == TokenType.Comma;
                 bool prevOpensGroup = prev.Type == TokenType.LeftParen;
                 bool prevIsComma    = prev.Type == TokenType.Comma;
+                // "declare @t table (id int)": TABLE is a keyword, not a function —
+                // keep the conventional space before its column-list paren.
+                bool prevIsTableKeyword = prev.Type == TokenType.Keyword
+                    && prev.Value.Equals("TABLE", StringComparison.OrdinalIgnoreCase);
 
                 if (prevIsComma)            sb.Append(' ');   // "18, 2"
+                else if (t.Type == TokenType.LeftParen && prevIsTableKeyword) sb.Append(' ');
                 else if (noSpaceBefore)     { }               // no space before ( ) ,
                 else if (prevOpensGroup)    { }               // no space right after (
                 else                        sb.Append(' ');   // normal token gap
@@ -299,10 +304,12 @@ internal static class RuleHelpers
         {
             var conditions = wc.Conditions.Select((c, idx) =>
             {
-                string cStr = EmitExpr(c, engine, indent + 1);
-                // Continuation conditions start the next line with a lowercase "and",
+                var cn   = c as ConditionNode;
+                string cStr = EmitExpr(cn?.Expression ?? c, engine, indent + 1);
+                // Continuation conditions start the next line with a lowercase and/or,
                 // rather than trailing "AND" at the end of the previous line.
-                return idx == 0 ? cStr : $"\n{Tabs(indent + 2)}and {cStr}";
+                string op = cn?.LogicalOp ?? "and";
+                return idx == 0 ? cStr : $"\n{Tabs(indent + 2)}{op} {cStr}";
             });
             string condStr = string.Concat(conditions);
             string thenStr = EmitExpr(wc.Then, engine, indent + 1);
@@ -344,32 +351,12 @@ internal static class RuleHelpers
                 string cmt    = cond.TrailingComment != null ? $" {cond.TrailingComment}" : "";
                 lines.Add($"{Tabs(indent)}{prefix}{expr}{cmt}");
             }
-            else if (c is OrGroupNode og)
-            {
-                lines.Add(EmitOrGroup(og, engine, indent));
-            }
             else
             {
                 lines.Add($"{Tabs(indent)}{EmitExpr(c, engine, indent)}");
             }
         }
         return string.Join("\n", lines);
-    }
-
-    private static string EmitOrGroup(OrGroupNode og, FormatterEngine engine, int indent)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.Append($"{Tabs(indent)}(\n");
-        foreach (var c in og.Conditions)
-        {
-            if (c is ConditionNode cond)
-            {
-                string prefix = cond.LogicalOp != null ? $"{cond.LogicalOp} " : "";
-                sb.AppendLine($"{Tabs(indent + 1)}{prefix}{EmitExpr(cond.Expression, engine, indent + 1)}");
-            }
-        }
-        sb.Append($"{Tabs(indent)})");
-        return sb.ToString();
     }
 
     // ─── Table ref emitter ──────────────────────────────────────────────────
@@ -468,32 +455,6 @@ internal static class RuleHelpers
         return sb.ToString();
     }
 
-    // ─── OR-group conditions (rule 2.6) ─────────────────────────────────────
-
-    public static bool HasOrConditions(List<AstNode> conditions)
-        => conditions.OfType<ConditionNode>().Any(c => c.LogicalOp == "or");
-
-    private static List<List<ConditionNode>> SplitByOr(List<AstNode> conditions)
-    {
-        var groups  = new List<List<ConditionNode>>();
-        var current = new List<ConditionNode>();
-        foreach (var node in conditions)
-        {
-            if (node is ConditionNode cn)
-            {
-                if (cn.LogicalOp == "or" && current.Count > 0)
-                {
-                    groups.Add(current);
-                    current = new List<ConditionNode>();
-                    current.Add(new ConditionNode { Expression = cn.Expression });
-                }
-                else current.Add(cn);
-            }
-        }
-        if (current.Count > 0) groups.Add(current);
-        return groups;
-    }
-
     /// <summary>
     /// Renders a parenthesised boolean group inline within a condition:
     ///   (
@@ -514,48 +475,6 @@ internal static class RuleHelpers
             {
                 string prefix = cn.LogicalOp != null ? $"{cn.LogicalOp} " : "";
                 sb.Append($"{t1}{prefix}{EmitExpr(cn.Expression, engine, indent + 1)}\n");
-            }
-        }
-        sb.Append($"{t0})");
-        return sb.ToString();
-    }
-
-    public static string EmitOrGroupConditions(List<AstNode> conditions, FormatterEngine engine, int indent)
-    {
-        var groups    = SplitByOr(conditions);
-        bool allAtomic = groups.All(g => g.Count == 1);
-        var sb  = new System.Text.StringBuilder();
-        string t0 = Tabs(indent);
-        string t1 = Tabs(indent + 1);
-        string t2 = Tabs(indent + 2);
-
-        sb.Append($"{t0}(\n");
-        for (int i = 0; i < groups.Count; i++)
-        {
-            var group   = groups[i];
-            bool isFirst = i == 0;
-
-            if (allAtomic)
-            {
-                string prefix = isFirst ? "" : "or ";
-                sb.Append($"{t1}{prefix}{EmitExpr(group[0].Expression, engine, indent + 1)}\n");
-            }
-            else if (group.Count == 1)
-            {
-                // 'or condition' on a single line (consistent with EmitConditionGroup)
-                string prefix = isFirst ? "" : "or ";
-                sb.Append($"{t1}{prefix}{EmitExpr(group[0].Expression, engine, indent + 1)}\n");
-            }
-            else
-            {
-                if (!isFirst) sb.Append($"{t1}or\n");
-                sb.Append($"{t1}(\n");
-                for (int j = 0; j < group.Count; j++)
-                {
-                    string andPrefix = j == 0 ? "" : "and ";
-                    sb.Append($"{t2}{andPrefix}{EmitExpr(group[j].Expression, engine, indent + 2)}\n");
-                }
-                sb.Append($"{t1})\n");
             }
         }
         sb.Append($"{t0})");

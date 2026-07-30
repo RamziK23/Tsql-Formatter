@@ -50,20 +50,12 @@ public sealed class UpdateRule : IFormatterRule
             }
         }
 
-        // WHERE (rule 2.6: OR wrapped in brackets)
+        // WHERE — same flat layout as SELECT (rule where-or: no outer parens are added,
+        // and/or start their lines, source paren groups are preserved by the parser).
         if (upd.WhereConditions.Count > 0)
         {
-            if (RuleHelpers.HasOrConditions(upd.WhereConditions))
-            {
-                sb.Append($"\n{tabs}where\n");
-                sb.Append(RuleHelpers.EmitOrGroupConditions(upd.WhereConditions, engine, indent));
-            }
-            else
-            {
-                // Every condition on its own indented line, even a single one.
-                sb.Append($"\n{tabs}where");
-                sb.Append($"\n{RuleHelpers.EmitConditions(upd.WhereConditions, engine, indent + 1)}");
-            }
+            sb.Append($"\n{tabs}where");
+            sb.Append($"\n{RuleHelpers.EmitConditions(upd.WhereConditions, engine, indent + 1)}");
         }
 
         return sb.ToString();

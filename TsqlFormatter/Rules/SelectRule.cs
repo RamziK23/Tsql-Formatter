@@ -87,14 +87,11 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"\n{tabs}{c}");
 
         // ── WHERE ─────────────────────────────────────────────────────────────
-        var whereConds = sel.WhereConditions.Where(c => c is not ConditionNode cn || cn.LogicalOp != "having").ToList();
-        var havingCond = sel.WhereConditions.OfType<ConditionNode>().FirstOrDefault(cn => cn.LogicalOp == "having");
-
         // Every condition on its own indented line, even a single one.
-        if (whereConds.Count > 0)
+        if (sel.WhereConditions.Count > 0)
         {
             sb.Append($"\n{tabs}where");
-            sb.Append($"\n{RuleHelpers.EmitConditions(whereConds, engine, indent + 1)}");
+            sb.Append($"\n{RuleHelpers.EmitConditions(sel.WhereConditions, engine, indent + 1)}");
         }
 
         // ── GROUP BY ──────────────────────────────────────────────────────────
@@ -110,11 +107,11 @@ public sealed class SelectRule : IFormatterRule
         }
 
         // ── HAVING ────────────────────────────────────────────────────────────
-        // Like WHERE: the keyword on its own line, the condition on the next line (+1 tab).
-        if (havingCond != null)
+        // Like WHERE: the keyword on its own line, each condition on its own line (+1 tab).
+        if (sel.HavingConditions.Count > 0)
         {
             sb.Append($"\n{tabs}having");
-            sb.Append($"\n{RuleHelpers.Tabs(indent + 1)}{RuleHelpers.EmitExpr(havingCond.Expression, engine, indent + 1)}");
+            sb.Append($"\n{RuleHelpers.EmitConditions(sel.HavingConditions, engine, indent + 1)}");
         }
 
         // ── ORDER BY ─────────────────────────────────────────────────────────

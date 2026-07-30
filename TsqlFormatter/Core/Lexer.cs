@@ -66,6 +66,9 @@ public sealed class Lexer
         if (c == '[') return ReadQuotedIdentifier();
         // ANSI double-quoted identifier: "name" (equivalent to [name] in T-SQL)
         if (c == '"') return ReadDoubleQuotedIdentifier();
+        // Hex/binary literal 0x1F: must be one token, or "0x1F" splits into number 0
+        // and identifier x1F (which the parser would then treat as an alias).
+        if (c == '0' && (Peek(1) == 'x' || Peek(1) == 'X')) return ReadHexLiteral();
         if (char.IsDigit(c) || (c == '.' && char.IsDigit(Peek(1)))) return ReadNumber();
         if (c == '@') return ReadVariable();
         if (char.IsLetter(c) || c == '_' || c == '#') return ReadWord();
@@ -167,6 +170,16 @@ public sealed class Lexer
         return new Token(TokenType.QuotedIdentifier, sb.ToString(), sl, sc);
     }
 
+    private Token ReadHexLiteral()
+    {
+        int sl = _line, sc = _col;
+        var sb = new System.Text.StringBuilder();
+        sb.Append(Advance()); // 0
+        sb.Append(Advance()); // x / X
+        while (_pos < _source.Length && Uri.IsHexDigit(_source[_pos])) sb.Append(Advance());
+        return new Token(TokenType.NumberLiteral, sb.ToString(), sl, sc);
+    }
+
     private Token ReadNumber()
     {
         int sl = _line, sc = _col;
@@ -198,9 +211,12 @@ public sealed class Lexer
         int sl = _line, sc = _col;
         var sb = new System.Text.StringBuilder();
         sb.Append(Advance()); sb.Append(Advance());
-        while (_pos < _source.Length)
+        // T-SQL block comments nest: /* outer /* inner */ still comment */ is ONE comment.
+        int depth = 1;
+        while (_pos < _source.Length && depth > 0)
         {
-            if (_source[_pos] == '*' && Peek(1) == '/') { sb.Append(Advance()); sb.Append(Advance()); break; }
+            if (_source[_pos] == '/' && Peek(1) == '*') { depth++; sb.Append(Advance()); sb.Append(Advance()); continue; }
+            if (_source[_pos] == '*' && Peek(1) == '/') { depth--; sb.Append(Advance()); sb.Append(Advance()); continue; }
             sb.Append(Advance());
         }
         return new Token(TokenType.BlockComment, sb.ToString(), sl, sc);

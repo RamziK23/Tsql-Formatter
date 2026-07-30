@@ -703,6 +703,125 @@ public static class TestCases
             Input    = "IF OBJECT_ID('TempDb..#x') is not null DROP TABLE #x\nCREATE TABLE #x(\n\tprocess INT,\n\tprocess_status_id INT\n)",
             Expected = "if\n\tobject_id('TempDb..#x') is not null\n\tdrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
+
+        // ── transactions: BEGIN TRAN is a statement, not a BEGIN...END block ──
+        new TestCase {
+            Rule = "tran", Name = "begin tran / commit are statements, no fabricated end",
+            Input    = "begin tran\nupdate t set x = 1 where id = 5\ncommit",
+            Expected = "begin tran\nupdate t\nset\n\tx = 1\nwhere\n\tid = 5\ncommit",
+        },
+        new TestCase {
+            Rule = "tran", Name = "begin transaction with name, rollback lowercased",
+            Input    = "BEGIN TRANSACTION MyTx\ndelete from t where id = 1\nROLLBACK",
+            Expected = "begin transaction MyTx\ndelete from t\nwhere\n\tid = 1\nrollback",
+        },
+        new TestCase {
+            Rule = "tran", Name = "commit is not swallowed as a select column",
+            Input    = "begin tran\nselect 1 as x\ncommit",
+            Expected = "begin tran\nselect\n\t1 as x\ncommit",
+        },
+        new TestCase {
+            Rule = "tran", Name = "unbalanced begin (no end) is returned unchanged",
+            Input    = "begin\nselect 1 as a",
+            Expected = "begin\nselect 1 as a",
+        },
+
+        // ── statement boundaries after a column/condition list ────────────────
+        new TestCase {
+            Rule = "stmtbound", Name = "set statement after assignment select is not a column",
+            Input    = "select @a = 1\nset @b = 2",
+            Expected = "select\n\t@a = 1\nset @b = 2",
+        },
+        new TestCase {
+            Rule = "stmtbound", Name = "identifier statement after select is not swallowed with an invented comma",
+            Input    = "select 1 as x\nuse mydb",
+            Expected = "select\n\t1 as x\nuse mydb",
+        },
+        new TestCase {
+            Rule = "stmtbound", Name = "identifier statement after where is not swallowed as a condition",
+            Input    = "select 1 from t where x = 1\nopen cur",
+            Expected = "select\n\t1\nfrom t\nwhere\n\tx = 1\nopen cur",
+        },
+
+        // ── fragments: unrecognized statements must not become bogus columns ──
+        new TestCase {
+            Rule = "fragment", Name = "two-word statement is not rewritten into 'x as y'",
+            Input    = "use mydb",
+            Expected = "use mydb",
+        },
+        new TestCase {
+            Rule = "fragment", Name = "waitfor is not rewritten into a column list",
+            Input    = "waitfor delay '00:00:05'",
+            Expected = "waitfor delay '00:00:05'",
+        },
+
+        // ── literals ──────────────────────────────────────────────────────────
+        new TestCase {
+            Rule = "hex", Name = "hex literal 0x1F stays one token",
+            Input    = "select 0x1F as mask from t where flags & 0x0F = 0x01",
+            Expected = "select\n\t0x1F as mask\nfrom t\nwhere\n\tflags & 0x0F = 0x01",
+        },
+
+        // ── non-reserved keyword as bare alias ────────────────────────────────
+        new TestCase {
+            Rule = "2.1", Name = "non-reserved keyword (day) as bare alias is kept as alias",
+            Input    = "select getdate() day, 1 x from t",
+            Expected = "select\n\tgetdate() as day,\n\t1 as x\nfrom t",
+        },
+
+        // ── ; before WITH is preserved ────────────────────────────────────────
+        new TestCase {
+            Rule = "meta", Name = "semicolon before a non-first WITH (CTE) is preserved",
+            Input    = "select 1 as a\n;with cte as (select 2 as b) select * from cte",
+            Expected = "select\n\t1 as a\n;with cte as (\n\tselect\n\t\t2 as b\n)\nselect\n\t*\nfrom cte",
+        },
+
+        // ── GO with a repeat count ────────────────────────────────────────────
+        new TestCase {
+            Rule = "go", Name = "GO 5 keeps its repeat count",
+            Input    = "select 1\nGO 5",
+            Expected = "select\n\t1\n\nGO 5",
+        },
+
+        // ── CASE: OR in a when-condition ──────────────────────────────────────
+        new TestCase {
+            Rule = "2.5", Name = "when with or: operator starts the continuation line",
+            Input    = "select case when a=1 or b=2 then 'x' else 'y' end as r from t",
+            Expected = "select\n\tcase\n\t\twhen a = 1\n\t\t\tor b = 2\n\t\tthen 'x'\n\t\telse 'y'\n\tend as r\nfrom t",
+        },
+
+        // ── HAVING with several conditions ────────────────────────────────────
+        new TestCase {
+            Rule = "having", Name = "having with and: each condition on its own line",
+            Input    = "select a from t group by a having count(*) > 1 and sum(b) < 5",
+            Expected = "select\n\ta\nfrom t\ngroup by\n\ta\nhaving\n\tcount(*) > 1\n\tand sum(b) < 5",
+        },
+
+        // ── nested block comments ─────────────────────────────────────────────
+        new TestCase {
+            Rule = "blockcmt", Name = "nested /* /* */ */ comment is one comment",
+            Input    = "select a /* outer /* inner */ still comment */ from t",
+            Expected = "select\n\ta/* outer /* inner */ still comment */\nfrom t",
+        },
+
+        // ── UPDATE/DELETE WHERE: flat like SELECT, no outer parens added ──────
+        new TestCase {
+            Rule = "where-or", Name = "update with or: flat conditions, no added parens",
+            Input    = "update t set a = 1 where x = 1 or y = 2",
+            Expected = "update t\nset\n\ta = 1\nwhere\n\tx = 1\n\tor y = 2",
+        },
+        new TestCase {
+            Rule = "where-or", Name = "delete with and/or: flat conditions, no added parens",
+            Input    = "delete from t where a = 1 and b = 2 or c = 3",
+            Expected = "delete from t\nwhere\n\ta = 1\n\tand b = 2\n\tor c = 3",
+        },
+
+        // ── DECLARE @t table (...) keeps the space before the column list ─────
+        new TestCase {
+            Rule = "declare", Name = "table variable: space between table and its column list",
+            Input    = "declare @t table (id int, name varchar(50))",
+            Expected = "declare\n\t@t table (id int, name varchar(50))",
+        },
     };
 }
 
