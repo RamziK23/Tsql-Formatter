@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v5.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v5.0": {
+      "TsqlFormatter.Tests/1.0.0": {
+        "dependencies": {
+          "TsqlFormatter": "1.0.0"
+        },
+        "runtime": {
+          "TsqlFormatter.Tests.dll": {}
+        }
+      },
+      "TsqlFormatter/1.0.0": {
+        "runtime": {
+          "TsqlFormatter.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "TsqlFormatter.Tests/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "TsqlFormatter/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

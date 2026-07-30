@@ -1,0 +1,16 @@
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\bin\Debug\net5.0\TsqlFormatter.exe
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\bin\Debug\net5.0\TsqlFormatter.deps.json
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\bin\Debug\net5.0\TsqlFormatter.runtimeconfig.json
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\bin\Debug\net5.0\TsqlFormatter.runtimeconfig.dev.json
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\bin\Debug\net5.0\TsqlFormatter.dll
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\bin\Debug\net5.0\TsqlFormatter.pdb
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.AssemblyInfoInputs.cache
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.AssemblyInfo.cs
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.csproj.CoreCompileInputs.cache
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.sourcelink.json
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.dll
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\refint\TsqlFormatter.dll
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.pdb
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\TsqlFormatter.genruntimeconfig.cache
+C:\Users\Lenovo\Tsql-Formatter\TsqlFormatter\obj\Debug\net5.0\ref\TsqlFormatter.dll

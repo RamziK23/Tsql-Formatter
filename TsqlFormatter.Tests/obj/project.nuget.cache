@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "iZ8s0GZccMg=",
+  "dgSpecHash": "cC1L1fbw4Z4=",
   "success": true,
-  "projectFilePath": "C:\\Tools\\TsqlFormatter\\TsqlFormatter.Tests\\TsqlFormatter.Tests.csproj",
+  "projectFilePath": "C:\\Users\\Lenovo\\Tsql-Formatter\\TsqlFormatter.Tests\\TsqlFormatter.Tests.csproj",
   "expectedPackageFiles": [],
   "logs": []
 }
