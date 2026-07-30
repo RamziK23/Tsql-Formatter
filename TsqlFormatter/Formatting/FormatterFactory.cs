@@ -20,6 +20,7 @@ public static class FormatterFactory
             new CreateTableRule(),
             new FragmentRule(),
             new GoSeparatorRule(),
+            new VerbatimRule(),
             new RawTokensRule(),
         };
         return new FormatterEngine(rules);

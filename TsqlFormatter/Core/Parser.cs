@@ -66,7 +66,11 @@ public sealed class Parser
                 script.HasLeadingSemicolon = true;
             isFirstStatement = false;
 
+            int beforeStmt = _pos;
             var stmt = ParseStatement();
+            // Forward-progress guarantee: never allow a zero-consumption iteration to loop
+            // forever. If a statement was somehow not advanced, consume one token and move on.
+            if (_pos == beforeStmt) { AdvanceRaw(); continue; }
             if (stmt != null)
             {
                 // Preserve a blank line that existed before this statement in the source.
@@ -198,8 +202,37 @@ public sealed class Parser
         return t.Type == TokenType.Identifier && t.Value.Equals("GO", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>True at CREATE/ALTER [OR ALTER] FUNCTION|PROCEDURE|PROC|TRIGGER — a programmable
+    /// object whose procedural body we won't try to reformat.</summary>
+    private bool IsProceduralObjectStart()
+    {
+        var head = Peek();
+        if (!(head.IsKeyword("CREATE") || head.IsKeyword("ALTER"))) return false;
+        int k = 1;
+        if (PeekAt(1).IsKeyword("OR") && PeekAt(2).IsKeyword("ALTER")) k = 3;
+        var kind = PeekAt(k).Value;
+        return kind.Equals("FUNCTION",  StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("PROCEDURE", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("PROC",      StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("TRIGGER",   StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Captures every token (whitespace/comments included) up to the next batch GO
+    /// or EOF, so the object is re-emitted exactly as written.</summary>
+    private AstNode CaptureVerbatimUntilGo()
+    {
+        var node = new VerbatimNode();
+        while (!IsAtEnd() && !IsGoKeyword())
+            node.Tokens.Add(AdvanceRaw());
+        return node;
+    }
+
     private AstNode? ParseStatement()
     {
+        // Programmable objects (CREATE/ALTER FUNCTION|PROCEDURE|PROC|TRIGGER) have procedural
+        // bodies this formatter can't safely restructure — capture them verbatim.
+        if (IsProceduralObjectStart()) return CaptureVerbatimUntilGo();
+
         var tok = Peek();
         if (tok.Type == TokenType.DeclareKeyword)  return ParseDeclare();
         if (tok.IsKeyword("WITH"))                 return ParseWithCte();
@@ -240,10 +273,18 @@ public sealed class Parser
             while (!IsAtEnd())
             {
                 var t = Peek();
-                // A comma or '=' ends the type only at paren depth 0
-                if (typeDepth == 0 && (PeekIs(TokenType.Equals) || PeekIs(TokenType.Comma))) break;
+                // A comma, '=' or ';' ends the type only at paren depth 0. Stopping at ';'
+                // is critical: an initializer-less last variable ("@x float;") must not
+                // swallow the ';' and every following statement up to the next SELECT/GO.
+                if (typeDepth == 0 && (PeekIs(TokenType.Equals) || PeekIs(TokenType.Comma) || PeekIs(TokenType.Semicolon))) break;
                 if (t.IsKeyword("SELECT") || t.Type == TokenType.DeclareKeyword
                     || IsGoKeyword() || t.Type == TokenType.EndOfFile) break;
+                // A statement-boundary keyword also ends the type (defensive when there is no
+                // ';', e.g. "declare @x float begin ..." inside a function body).
+                if (typeDepth == 0 && (t.IsKeyword("BEGIN") || t.IsKeyword("END") || t.IsKeyword("IF")
+                    || t.IsKeyword("WHILE") || t.IsKeyword("RETURN") || t.IsKeyword("SET")
+                    || t.IsKeyword("INSERT") || t.IsKeyword("UPDATE") || t.IsKeyword("DELETE")
+                    || t.IsKeyword("CREATE") || t.IsKeyword("DROP") || t.IsKeyword("WITH"))) break;
                 if (t.Type == TokenType.LeftParen)  typeDepth++;
                 if (t.Type == TokenType.RightParen) typeDepth--;
                 dataType.Add(Advance());
@@ -1261,8 +1302,12 @@ public sealed class Parser
         var node = new BeginEndNode();
         while (!IsAtEnd() && !Peek().IsKeyword("END"))
         {
+            int before = _pos;
             var stmt = ParseStatement();
             if (stmt != null) node.Body.Add(stmt);
+            // Forward-progress guarantee: if ParseStatement consumed nothing (e.g. a stray GO
+            // inside the block that no sub-parser will take), stop instead of spinning forever.
+            if (_pos == before) break;
         }
         if (Peek().IsKeyword("END")) Advance(); // END
         return node;

@@ -35,6 +35,18 @@ public static class TestCases
             Expected = "select\n\tcount(*)\nfrom t\ngroup by\n\ta\norder by\n\ta",
         },
 
+        // ── programmable objects emitted verbatim; no infinite loop ───────────
+        new TestCase {
+            Rule = "verbatim", Name = "create function body emitted verbatim (no hang, no mangling)",
+            Input    = "create or alter function dbo.f(@a int) returns int as\nbegin\n\tdeclare @x int;\n\treturn @a;\nend\ngo",
+            Expected = "create or alter function dbo.f(@a int) returns int as\nbegin\n\tdeclare @x int;\n\treturn @a;\nend\n\nGO",
+        },
+        new TestCase {
+            Rule = "declare", Name = "initializer-less last variable stops at ';' (no over-consumption)",
+            Input    = "declare @x int;\nselect 1 from t",
+            Expected = "declare\n\t@x int\nselect\n\t1\nfrom t",
+        },
+
         // ── DROP TABLE trailing comment (bug 7) ──────────────────────────────
         new TestCase {
             Rule = "droptable", Name = "trailing -- comment not glued into the table name",

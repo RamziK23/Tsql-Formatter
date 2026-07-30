@@ -387,6 +387,16 @@ public sealed class InValueGroupNode : AstNode
     public string? TrailingLineComment { get; init; }
 }
 
+/// <summary>
+/// A span of source captured verbatim (all tokens, including whitespace/comments) and
+/// re-emitted exactly. Used for constructs the formatter can't safely restructure —
+/// programmable objects with procedural bodies (CREATE/ALTER FUNCTION/PROCEDURE/TRIGGER).
+/// </summary>
+public sealed class VerbatimNode : AstNode
+{
+    public List<Token> Tokens { get; } = new();
+}
+
 public sealed class RawTokensNode : AstNode
 {
     public List<Token> Tokens { get; } = new();
