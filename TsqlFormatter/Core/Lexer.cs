@@ -14,7 +14,7 @@ public sealed class Lexer
         "GROUP","BY","ORDER","HAVING","UNION","ALL","EXCEPT","INTERSECT",
         "INSERT","INTO","VALUES","UPDATE","SET","DELETE","TRUNCATE",
         "CREATE","ALTER","DROP","TABLE","VIEW","INDEX","PROCEDURE","FUNCTION",
-        "BEGIN","END","IF","ELSE","WHILE","RETURN","EXEC","EXECUTE",
+        "BEGIN","END","IF","ELSE","WHILE","RETURN","RETURNS","EXEC","EXECUTE",
         "CASE","WHEN","THEN","ELSE","OPENQUERY","EXISTS","WITH",
         "DECLARE","PRINT","RAISERROR","TRY","CATCH","THROW",
         "ASC","DESC","NULLS","FIRST","LAST","COLLATE","PERCENT","TIES",
@@ -69,6 +69,10 @@ public sealed class Lexer
         if (char.IsDigit(c) || (c == '.' && char.IsDigit(Peek(1)))) return ReadNumber();
         if (c == '@') return ReadVariable();
         if (char.IsLetter(c) || c == '_' || c == '#') return ReadWord();
+        // Compound assignment operators must stay a single token: += -= *= /= %= &= |= ^=
+        // (checked before the '/*' comment case above already handled '/*').
+        if ((c is '+' or '-' or '*' or '/' or '%' or '&' or '|' or '^') && Peek(1) == '=')
+            return ReadOperator(TokenType.CompoundAssign, 2);
         if (c == '<' && Peek(1) == '>') return ReadOperator(TokenType.NotEquals, 2);
         if (c == '!' && Peek(1) == '=') return ReadOperator(TokenType.NotEquals, 2);
         if (c == '<' && Peek(1) == '=') return ReadOperator(TokenType.LessOrEqual, 2);

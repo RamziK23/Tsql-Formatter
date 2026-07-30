@@ -248,7 +248,10 @@ internal static class RuleHelpers
         if (fn.Name.Equals("EXISTS", StringComparison.OrdinalIgnoreCase) && fn.Arguments.Count == 1)
             return $"{(fn.Negated ? "not " : "")}exists {EmitExpr(fn.Arguments[0], engine, indent)}";
 
-        var fnName = fn.IsKeywordFunction ? fn.Name.ToLowerInvariant() : fn.Name;
+        // Lowercase keyword functions and unqualified (system) function names — e.g. exp(),
+        // newid(). A schema-qualified name (dbo.MyFunc) keeps its case.
+        var fnName = (fn.IsKeywordFunction || !fn.Name.Contains('.'))
+            ? fn.Name.ToLowerInvariant() : fn.Name;
         var overStr = fn.OverClause != null
             ? $" over ({EmitExpr(fn.OverClause, engine, indent)})"
             : "";

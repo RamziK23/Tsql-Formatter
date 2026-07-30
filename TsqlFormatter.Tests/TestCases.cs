@@ -37,9 +37,14 @@ public static class TestCases
 
         // ── programmable objects emitted verbatim; no infinite loop ───────────
         new TestCase {
-            Rule = "verbatim", Name = "create function body emitted verbatim (no hang, no mangling)",
-            Input    = "create or alter function dbo.f(@a int) returns int as\nbegin\n\tdeclare @x int;\n\treturn @a;\nend\ngo",
-            Expected = "create or alter function dbo.f(@a int) returns int as\nbegin\n\tdeclare @x int;\n\treturn @a;\nend\n\nGO",
+            Rule = "function", Name = "create function: paren on name line, params/if/return formatted, no hang",
+            Input    = "create function dbo.f(@a int) returns int as begin if @a is null return 0; return @a; end go",
+            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif\n\t\t@a is null\n\t\treturn 0\n\n\treturn @a\n\nend\n\nGO",
+        },
+        new TestCase {
+            Rule = "function", Name = "compound assignment += stays a single operator",
+            Input    = "create procedure dbo.p as begin set @n += 1 end go",
+            Expected = "create procedure dbo.p\nas\nbegin\n\n\tset @n += 1\n\nend\n\nGO",
         },
         new TestCase {
             Rule = "declare", Name = "initializer-less last variable stops at ';' (no over-consumption)",
@@ -661,9 +666,9 @@ public static class TestCases
             Expected = "create table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
         new TestCase {
-            Rule = "2.14", Name = "if object_id drop/create kept compact and lowercased",
+            Rule = "2.14", Name = "if object_id drop/create: if condition on its own line, lowercased",
             Input    = "IF OBJECT_ID('TempDb..#x') is not null DROP TABLE #x\nCREATE TABLE #x(\n\tprocess INT,\n\tprocess_status_id INT\n)",
-            Expected = "if object_id('TempDb..#x') is not null\ndrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
+            Expected = "if\n\tobject_id('TempDb..#x') is not null\n\tdrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
     };
 }

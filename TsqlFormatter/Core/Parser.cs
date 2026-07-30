@@ -217,21 +217,146 @@ public sealed class Parser
             || kind.Equals("TRIGGER",   StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Captures every token (whitespace/comments included) up to the next batch GO
-    /// or EOF, so the object is re-emitted exactly as written.</summary>
-    private AstNode CaptureVerbatimUntilGo()
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  Programmable objects (CREATE/ALTER FUNCTION | PROCEDURE) + control flow
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private AstNode ParseCreateProgrammable()
     {
-        var node = new VerbatimNode();
-        while (!IsAtEnd() && !IsGoKeyword())
-            node.Tokens.Add(AdvanceRaw());
-        return node;
+        // Prefix: CREATE [OR ALTER] {FUNCTION|PROCEDURE|PROC}
+        var prefix = new System.Text.StringBuilder();
+        prefix.Append(Advance().Value.ToLowerInvariant());       // create / alter
+        if (Peek().IsKeyword("OR"))
+        {
+            prefix.Append(' ').Append(Advance().Value.ToLowerInvariant());   // or
+            prefix.Append(' ').Append(Advance().Value.ToLowerInvariant());   // alter
+        }
+        prefix.Append(' ').Append(Advance().Value.ToLowerInvariant());       // function / procedure / proc
+
+        // Object name (dotted, may be [quoted]).
+        var name = new System.Text.StringBuilder();
+        name.Append(Advance().Value);
+        while (PeekIs(TokenType.Dot)) { name.Append(Advance().Value); name.Append(Advance().Value); }
+
+        var pars = new List<ParamNode>();
+        bool hasParens = false;
+        if (PeekIs(TokenType.LeftParen))
+        {
+            hasParens = true;
+            Advance(); // (
+            pars.AddRange(ParseParamList(untilRightParen: true));
+            Expect(TokenType.RightParen);
+        }
+        else if (Peek().Type == TokenType.Variable)
+        {
+            pars.AddRange(ParseParamList(untilRightParen: false)); // procedure params without parens
+        }
+
+        // Returns clause / WITH options: everything up to AS (or the body).
+        var returns = new List<Token>();
+        while (!IsAtEnd() && !Peek().IsKeyword("AS") && !Peek().IsKeyword("BEGIN") && !IsGoKeyword())
+            returns.Add(Advance());
+        if (Peek().IsKeyword("AS")) Advance();
+
+        AstNode? body = null;
+        if (!IsAtEnd() && !IsGoKeyword()) body = ParseStatement();
+
+        var obj = new ProgrammableObjectNode { Prefix = prefix.ToString(), Name = name.ToString(), HasParens = hasParens, Body = body };
+        obj.Params.AddRange(pars);
+        obj.ReturnsClause.AddRange(returns);
+        return obj;
+    }
+
+    /// <summary>Parses a comma-separated parameter list: @name type [= default] [output].</summary>
+    private List<ParamNode> ParseParamList(bool untilRightParen)
+    {
+        var list = new List<ParamNode>();
+        while (!IsAtEnd())
+        {
+            if (untilRightParen && PeekIs(TokenType.RightParen)) break;
+            if (!untilRightParen && (Peek().IsKeyword("AS") || IsGoKeyword())) break;
+            if (PeekIs(TokenType.Comma)) { Advance(); continue; }
+            if (Peek().Type != TokenType.Variable) break;   // not a parameter — stop
+
+            var variable = Advance();
+            var dataType = new List<Token>();
+            int depth = 0;
+            while (!IsAtEnd())
+            {
+                var t = Peek();
+                if (depth == 0 && (PeekIs(TokenType.Equals) || PeekIs(TokenType.Comma) || PeekIs(TokenType.RightParen))) break;
+                if (depth == 0 && (t.IsKeyword("AS") || t.IsKeyword("OUTPUT") || IsGoKeyword() || t.Type == TokenType.EndOfFile)) break;
+                if (t.Type == TokenType.LeftParen)  depth++;
+                if (t.Type == TokenType.RightParen) depth--;
+                dataType.Add(Advance());
+            }
+            AstNode? def = null;
+            if (TryConsume(TokenType.Equals)) def = ParseExpression();
+            bool output = false;
+            if (Peek().IsKeyword("OUTPUT")) { output = true; Advance(); }
+
+            string? tc = TryTakeSameLineComment();
+            if (PeekIs(TokenType.Comma)) Advance();
+            if (tc == null) tc = TryTakeSameLineInlineComment();
+
+            var p = new ParamNode { Variable = variable, Default = def, Output = output, TrailingComment = tc };
+            p.DataType.AddRange(dataType);
+            list.Add(p);
+        }
+        return list;
+    }
+
+    private AstNode ParseIf()
+    {
+        Advance(); // IF
+        var conds = ParseConditionList(isJoinOn: false);
+        var then = ParseStatement();
+        AstNode? elseStmt = null;
+        if (Peek().IsKeyword("ELSE")) { Advance(); elseStmt = ParseStatement(); }
+        var n = new IfNode { Then = then, Else = elseStmt };
+        n.Conditions.AddRange(conds);
+        return n;
+    }
+
+    private AstNode ParseWhile()
+    {
+        Advance(); // WHILE
+        var conds = ParseConditionList(isJoinOn: false);
+        var body = ParseStatement();
+        var n = new WhileNode { Body = body };
+        n.Conditions.AddRange(conds);
+        return n;
+    }
+
+    private AstNode ParseReturn()
+    {
+        Advance(); // RETURN
+        AstNode? val = null;
+        var t = Peek();
+        bool ends = t.Type is TokenType.Semicolon or TokenType.EndOfFile
+            || t.IsKeyword("END") || t.IsKeyword("ELSE") || IsGoKeyword();
+        if (!ends) val = ParseExpression();
+        TryConsume(TokenType.Semicolon);
+        return new ReturnNode { Value = val };
+    }
+
+    private AstNode ParseSet()
+    {
+        Advance(); // SET
+        var target = ParsePrimary();
+        string op = "=";
+        if (Peek().Type == TokenType.CompoundAssign) op = Advance().Value;
+        else if (PeekIs(TokenType.Equals)) Advance();
+        var val = ParseExpression();
+        TryConsume(TokenType.Semicolon);
+        return new SetNode { Target = target, Op = op, Value = val };
     }
 
     private AstNode? ParseStatement()
     {
-        // Programmable objects (CREATE/ALTER FUNCTION|PROCEDURE|PROC|TRIGGER) have procedural
-        // bodies this formatter can't safely restructure — capture them verbatim.
-        if (IsProceduralObjectStart()) return CaptureVerbatimUntilGo();
+        // Programmable objects (CREATE/ALTER FUNCTION|PROCEDURE|PROC|TRIGGER): parse header +
+        // procedural body. If parsing fails, FormatSource returns the source unchanged.
+        if (IsProceduralObjectStart()) return ParseCreateProgrammable();
 
         var tok = Peek();
         if (tok.Type == TokenType.DeclareKeyword)  return ParseDeclare();
@@ -243,6 +368,10 @@ public sealed class Parser
         if (tok.IsKeyword("BEGIN"))                return ParseBeginEnd();
         if (tok.IsKeyword("CREATE"))               return ParseCreate();
         if (tok.IsKeyword("DROP"))                 return ParseDrop();
+        if (tok.IsKeyword("IF"))                   return ParseIf();
+        if (tok.IsKeyword("WHILE"))                return ParseWhile();
+        if (tok.IsKeyword("RETURN"))               return ParseReturn();
+        if (tok.IsKeyword("SET") && PeekAt(1).Type == TokenType.Variable) return ParseSet();
         if (tok.Type == TokenType.Semicolon)        { Advance(); return null; }
         // Standalone comment: consume as single-token raw node (prevent bleeding into next statement)
         if (tok.Type is TokenType.LineComment or TokenType.BlockComment)
@@ -830,6 +959,10 @@ public sealed class Parser
             || t.IsKeyword("SELECT") || t.IsKeyword("INSERT") || t.IsKeyword("UPDATE")
             || t.IsKeyword("DELETE") || t.IsKeyword("CREATE") || t.IsKeyword("DROP")
             || t.IsKeyword("BEGIN")  || t.Type == TokenType.DeclareKeyword
+            // control-flow keywords end an IF/WHILE condition (the body follows)
+            || t.IsKeyword("RETURN") || t.IsKeyword("SET")  || t.IsKeyword("WHILE")
+            || t.IsKeyword("IF")     || t.IsKeyword("ELSE") || t.IsKeyword("PRINT")
+            || t.IsKeyword("EXEC")   || t.IsKeyword("EXECUTE")
             || t.Type == TokenType.EndOfFile || t.Type == TokenType.RightParen
             || t.Type == TokenType.Semicolon || IsGoKeyword();
         if (isJoinOn) return common || t.IsKeyword("WHERE") || IsJoinKeyword();
@@ -1304,7 +1437,13 @@ public sealed class Parser
         {
             int before = _pos;
             var stmt = ParseStatement();
-            if (stmt != null) node.Body.Add(stmt);
+            if (stmt != null)
+            {
+                // Keep a same-line trailing comment attached to this statement's last line.
+                var trailing = TryTakeSameLineComment();
+                if (trailing != null) stmt.StatementTrailingComment = trailing;
+                node.Body.Add(stmt);
+            }
             // Forward-progress guarantee: if ParseStatement consumed nothing (e.g. a stray GO
             // inside the block that no sub-parser will take), stop instead of spinning forever.
             if (_pos == before) break;
@@ -1448,6 +1587,7 @@ public sealed class Parser
             if (t.IsKeyword("SELECT") || t.IsKeyword("WITH") || t.IsKeyword("INSERT")
                 || t.IsKeyword("UPDATE") || t.IsKeyword("DELETE")
                 || t.IsKeyword("DROP")  || t.IsKeyword("CREATE") || t.IsKeyword("BEGIN")
+                || t.IsKeyword("IF")    || t.IsKeyword("WHILE")  || t.IsKeyword("RETURN")
                 || t.Type == TokenType.DeclareKeyword
                 || t.Type == TokenType.EndOfFile || IsGoKeyword()) break;
             raw.Tokens.Add(Advance());

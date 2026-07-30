@@ -26,6 +26,7 @@ public enum TokenType
     Multiply,
     Divide,
     Percent,
+    CompoundAssign,   // += -= *= /= %= &= |= ^=
     LineComment,
     BlockComment,
     Whitespace,

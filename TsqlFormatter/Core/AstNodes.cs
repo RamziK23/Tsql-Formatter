@@ -387,14 +387,56 @@ public sealed class InValueGroupNode : AstNode
     public string? TrailingLineComment { get; init; }
 }
 
-/// <summary>
-/// A span of source captured verbatim (all tokens, including whitespace/comments) and
-/// re-emitted exactly. Used for constructs the formatter can't safely restructure —
-/// programmable objects with procedural bodies (CREATE/ALTER FUNCTION/PROCEDURE/TRIGGER).
-/// </summary>
-public sealed class VerbatimNode : AstNode
+// ─── Programmable objects (CREATE/ALTER FUNCTION / PROCEDURE) ─────────────────
+
+/// <summary>A single parameter of a function/procedure: @name type [= default] [output].</summary>
+public sealed class ParamNode : AstNode
 {
-    public List<Token> Tokens { get; } = new();
+    public Token Variable { get; init; } = null!;
+    public List<Token> DataType { get; } = new();
+    public AstNode? Default { get; init; }
+    public bool Output { get; init; }
+    public string? TrailingComment { get; set; }
+}
+
+/// <summary>CREATE/ALTER FUNCTION|PROCEDURE with a parameter list and a procedural body.</summary>
+public sealed class ProgrammableObjectNode : AstNode
+{
+    public string Prefix { get; init; } = "";              // e.g. "create or alter function"
+    public string Name { get; init; } = "";                // e.g. "dbo.fnErlangAgents"
+    public bool HasParens { get; init; }                   // parameters were parenthesised
+    public List<ParamNode> Params { get; } = new();
+    public List<Token> ReturnsClause { get; } = new();     // tokens between ')' and AS (e.g. "returns int")
+    public AstNode? Body { get; init; }                    // usually a BeginEndNode
+}
+
+/// <summary>IF &lt;conditions&gt; &lt;then&gt; [ELSE &lt;else&gt;].</summary>
+public sealed class IfNode : AstNode
+{
+    public List<AstNode> Conditions { get; } = new();
+    public AstNode? Then { get; init; }
+    public AstNode? Else { get; init; }
+}
+
+/// <summary>WHILE &lt;conditions&gt; &lt;body&gt;.</summary>
+public sealed class WhileNode : AstNode
+{
+    public List<AstNode> Conditions { get; } = new();
+    public AstNode? Body { get; init; }
+}
+
+/// <summary>SET @var {= | += | -= | …} &lt;value&gt;.</summary>
+public sealed class SetNode : AstNode
+{
+    public AstNode Target { get; init; } = null!;
+    public string Op { get; init; } = "=";
+    public AstNode Value { get; init; } = null!;
+}
+
+/// <summary>RETURN [&lt;value&gt;].</summary>
+public sealed class ReturnNode : AstNode
+{
+    public AstNode? Value { get; init; }
 }
 
 public sealed class RawTokensNode : AstNode

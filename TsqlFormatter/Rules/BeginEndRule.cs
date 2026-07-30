@@ -55,6 +55,9 @@ public sealed class BeginEndRule : IFormatterRule
                     pendingComment = null;
                     pendingSep = "\n";
                 }
+                // A same-line trailing comment sticks to the statement's last line.
+                if (stmt.StatementTrailingComment != null)
+                    formatted = AppendTrailing(formatted, stmt.StatementTrailingComment);
                 rendered.Add(formatted);
             }
             if (pendingComment != null) rendered.Add(pendingComment);
@@ -66,6 +69,14 @@ public sealed class BeginEndRule : IFormatterRule
 
         sb.Append($"{tabs}end");
         return sb.ToString();
+    }
+
+    /// <summary>Appends a trailing comment to the last line of already-formatted text.</summary>
+    private static string AppendTrailing(string text, string comment)
+    {
+        int nl = text.LastIndexOf('\n');
+        var suffix = RuleHelpers.TrailingCommentSuffix(comment);
+        return nl < 0 ? text + suffix : text.Substring(0, nl + 1) + text.Substring(nl + 1) + suffix;
     }
 
     private static bool IsCommentOnly(RawTokensNode raw)

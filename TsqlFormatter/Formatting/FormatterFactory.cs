@@ -17,10 +17,11 @@ public static class FormatterFactory
             new UpdateRule(),
             new DeleteRule(),
             new BeginEndRule(),
+            new ProgrammableObjectRule(),
+            new ControlFlowRule(),
             new CreateTableRule(),
             new FragmentRule(),
             new GoSeparatorRule(),
-            new VerbatimRule(),
             new RawTokensRule(),
         };
         return new FormatterEngine(rules);
