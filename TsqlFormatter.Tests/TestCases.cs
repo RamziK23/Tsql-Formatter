@@ -35,7 +35,13 @@ public static class TestCases
             Expected = "select\n\tcount(*)\nfrom t\ngroup by\n\ta\norder by\n\ta",
         },
 
-        // ── programmable objects emitted verbatim; no infinite loop ───────────
+        new TestCase {
+            Rule = "stmtbound", Name = "comment then DECLARE after assignment select is not swallowed as columns",
+            Input    = "select @x = dateadd(ss, -1, @x)\n--select @x\n\ndeclare @dt varchar(255)",
+            Expected = "select\n\t@x = dateadd(ss, -1, @x)\n--select @x\n\ndeclare\n\t@dt varchar(255)",
+        },
+
+        // ── programmable objects / functions ──────────────────────────────────
         new TestCase {
             Rule = "function", Name = "create function: paren on name line, params/if/return formatted, no hang",
             Input    = "create function dbo.f(@a int) returns int as begin if @a is null return 0; return @a; end go",

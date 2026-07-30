@@ -771,6 +771,14 @@ public sealed class Parser
         {
             if (PeekIs(TokenType.Comma)) { Advance(); continue; }
 
+            // If a run of comments is followed by a statement boundary (DECLARE, another
+            // statement, GO, ;, EOF), those comments are standalone — NOT column-leading.
+            // Leave them for the outer parser and end the column list, so an assignment SELECT
+            // with no FROM doesn't swallow a following DECLARE/statement as bogus columns.
+            if ((PeekIs(TokenType.BlockComment) || PeekIs(TokenType.LineComment))
+                && IsStatementBoundary(PeekPastComments()))
+                break;
+
             // Leading comments before a column: block comments (/* */, kept inline) and line
             // comments standing on their own line (-- , rendered above the column). Capturing
             // line comments here keeps them out of ParsePrimary, where they would otherwise be
@@ -1619,6 +1627,19 @@ public sealed class Parser
             || t.Type == TokenType.EndOfFile || t.Type == TokenType.RightParen
             || t.Type == TokenType.Semicolon || IsGoKeyword();
     }
+
+    /// <summary>True if the token starts a new statement (or ends the batch/subquery) rather
+    /// than continuing the current SELECT — used to stop a column list at a real boundary.</summary>
+    private bool IsStatementBoundary(Token t) =>
+        t.Type == TokenType.DeclareKeyword
+        || t.IsKeyword("SELECT") || t.IsKeyword("INSERT") || t.IsKeyword("UPDATE")
+        || t.IsKeyword("DELETE") || t.IsKeyword("CREATE") || t.IsKeyword("DROP")
+        || t.IsKeyword("BEGIN")  || t.IsKeyword("END")    || t.IsKeyword("EXEC")
+        || t.IsKeyword("EXECUTE")|| t.IsKeyword("IF")     || t.IsKeyword("WHILE")
+        || t.IsKeyword("RETURN") || t.IsKeyword("PRINT")  || t.IsKeyword("MERGE")
+        || t.IsKeyword("TRUNCATE")
+        || t.Type == TokenType.EndOfFile || t.Type == TokenType.Semicolon
+        || (t.Type == TokenType.Identifier && t.Value.Equals("GO", StringComparison.OrdinalIgnoreCase));
 
     private bool IsClauseKeyword(Token t) =>
         t.IsKeyword("FROM") || t.IsKeyword("WHERE") || t.IsKeyword("GROUP") || t.IsKeyword("ORDER")
