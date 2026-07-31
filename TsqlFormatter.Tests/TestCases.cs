@@ -419,6 +419,11 @@ public static class TestCases
             Expected = "select distinct top 10\n\ta\nfrom t",
         },
         new TestCase {
+            Rule = "top", Name = "comment between select and top does not derail the statement",
+            Input    = "select /*top 10*/ top (@top) a as x, b as y from t",
+            Expected = "/*top 10*/\nselect top (@top)\n\ta as x,\n\tb as y\nfrom t",
+        },
+        new TestCase {
             Rule = "hint", Name = "with (nolock) on table",
             Input    = "select a from t with (nolock) where x = 1",
             Expected = "select\n\ta\nfrom t with (nolock)\nwhere\n\tx = 1",

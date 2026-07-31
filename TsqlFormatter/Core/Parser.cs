@@ -563,11 +563,18 @@ public sealed class Parser
         // skipped by Expect; keep it as a leading comment rendered above the select.
         var leadingComments = DrainPendingComments();
         // SELECT [DISTINCT] [TOP ...] — DISTINCT precedes TOP syntactically.
+        // A comment may sit between SELECT and DISTINCT/TOP, e.g. "select /*top 10*/ top (@top)".
+        // Peek() does NOT skip comments, so we must look PAST them: otherwise the TOP/DISTINCT
+        // clause is missed and "top (@top)" is misparsed as a column, derailing the whole
+        // statement. When the clause does follow, the intervening comment(s) are consumed and
+        // kept as leading comments of the select.
         bool distinct = false;
-        if (Peek().IsKeyword("DISTINCT")) { distinct = true; Advance(); }
+        if (PeekPastComments().IsKeyword("DISTINCT"))
+        { leadingComments.AddRange(CollectStandaloneComments()); distinct = true; Advance(); }
         string? topExpr = null;
-        if (Peek().IsKeyword("TOP"))
+        if (PeekPastComments().IsKeyword("TOP"))
         {
+            leadingComments.AddRange(CollectStandaloneComments());
             Advance();
             var tb = new System.Text.StringBuilder();
             if (PeekIs(TokenType.LeftParen))
