@@ -879,6 +879,27 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\n\n\tselect\n\t\t1\n\nelse\n\n\tselect\n\t\t0",
         },
+        // ── Blank line around a comment after a FROM with no WHERE ───────────
+        new TestCase {
+            Rule = "comments", Name = "blank line before a comment after from (no where) is kept",
+            Input    = "select a\nfrom t\n\n--note\n\nselect b\nfrom t",
+            Expected = "select\n\ta\nfrom t\n\n--note\n\nselect\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "comments", Name = "comment after from with no blank line stays glued to the next statement",
+            Input    = "select a\nfrom t\n--note\nselect b\nfrom t",
+            Expected = "select\n\ta\nfrom t\n--note\nselect\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "comments", Name = "comment between from and where stays inside the select",
+            Input    = "select a\nfrom t\n--note\nwhere x = 1",
+            Expected = "select\n\ta\nfrom t\n--note\nwhere\n\tx = 1",
+        },
+        new TestCase {
+            Rule = "comments", Name = "blank line around a comment inside begin/end is kept",
+            Input    = "begin\n\ninsert into t2 (a)\nselect nc.a\nfrom #new as nc\n\n--следующий шаг\n\ninsert into t3 (a)\nselect nc.a\nfrom #new as nc\n\nend",
+            Expected = "begin\n\n\tinsert into t2(\n\t\ta\n\t)\n\tselect\n\t\tnc.a\n\tfrom #new as nc\n\n\t--следующий шаг\n\n\tinsert into t3(\n\t\ta\n\t)\n\tselect\n\t\tnc.a\n\tfrom #new as nc\n\nend",
+        },
         new TestCase {
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",

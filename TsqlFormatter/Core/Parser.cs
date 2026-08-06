@@ -631,6 +631,7 @@ public sealed class Parser
             // Collect joins, tolerating standalone comments between FROM and each JOIN.
             while (true)
             {
+                int beforeComments = _pos;
                 var pending = CollectStandaloneComments();
                 if (IsJoinKeyword())
                 {
@@ -640,8 +641,15 @@ public sealed class Parser
                 }
                 else
                 {
-                    // Not a join — push the comments onto the next construct instead.
-                    node.PostFromComments.AddRange(pending);
+                    // Comments after the FROM/JOIN block belong to this SELECT only when the
+                    // statement actually continues (WHERE, GROUP BY, …). Otherwise they annotate
+                    // whatever comes AFTER the statement: give them back untouched, so the script
+                    // level attaches them to the next statement together with the blank line the
+                    // source had around them.
+                    if (pending.Count > 0 && !IsSelectContinuation(Peek()))
+                        _pos = beforeComments;
+                    else
+                        node.PostFromComments.AddRange(pending);
                     break;
                 }
             }
@@ -1775,6 +1783,13 @@ public sealed class Parser
         || t.Type == TokenType.EndOfFile || t.Type == TokenType.Semicolon
         || (t.Type == TokenType.Identifier && t.Value.Equals("GO", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>True if the token continues the current SELECT after its FROM/JOIN block
+    /// (WHERE, GROUP BY, HAVING, ORDER BY, OPTION, UNION/EXCEPT/INTERSECT).</summary>
+    private static bool IsSelectContinuation(Token t) =>
+        t.IsKeyword("WHERE")  || t.IsKeyword("GROUP")  || t.IsKeyword("HAVING")
+        || t.IsKeyword("ORDER") || t.IsKeyword("OPTION")
+        || t.IsKeyword("UNION") || t.IsKeyword("EXCEPT") || t.IsKeyword("INTERSECT");
+
     private bool IsClauseKeyword(Token t) =>
         t.IsKeyword("FROM") || t.IsKeyword("WHERE") || t.IsKeyword("GROUP") || t.IsKeyword("ORDER")
         || t.IsKeyword("HAVING") || t.IsKeyword("UNION") || t.IsKeyword("INNER") || t.IsKeyword("LEFT")
@@ -1835,10 +1850,18 @@ public sealed class Parser
         return new Token(TokenType.EndOfFile, string.Empty);
     }
 
-    /// <summary>Counts consecutive Newline tokens immediately before the next meaningful token.</summary>
+    /// <summary>
+    /// Counts consecutive Newline tokens immediately before the next meaningful token — the one
+    /// Peek() would return. The run is measured from that token backwards rather than from _pos,
+    /// so a lookahead that already stepped over part of the separator run cannot make a blank
+    /// line "disappear" for the caller.
+    /// </summary>
     private int CountNewlinesBackFromCurrent()
     {
-        int i = _pos - 1, count = 0;
+        int next = _pos;
+        while (next < _tokens.Count && Skippable.Contains(_tokens[next].Type)) next++;
+
+        int i = next - 1, count = 0;
         while (i >= 0 && (_tokens[i].Type == TokenType.Newline || _tokens[i].Type == TokenType.Whitespace))
         {
             if (_tokens[i].Type == TokenType.Newline) count++;

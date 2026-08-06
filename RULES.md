@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~80 · Тестов: 153/153 · Движок: .NET 5
+- Правил: ~80 · Тестов: 157/157 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -269,6 +269,31 @@ select a from t
 -- header
 select
 	a
+from t
+```
+
+Комментарий после `from` (в т.ч. после блока `join`) остаётся внутри `select` только если оператор
+продолжается — дальше идёт `where` / `group by` / `having` / `order by` / `option` / `union`. Иначе
+он относится к следующему оператору, и окружавшие его пустые строки сохраняются:
+
+```sql
+-- вход
+select a
+from t
+
+--следующий шаг
+
+select b
+from t
+-- результат
+select
+	a
+from t
+
+--следующий шаг
+
+select
+	b
 from t
 ```
 
