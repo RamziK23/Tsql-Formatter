@@ -359,6 +359,49 @@ internal static class RuleHelpers
         return string.Join("\n", lines);
     }
 
+    /// <summary>
+    /// Emits a condition list whose FIRST condition stays on the keyword's line ("if @i &lt; 1"):
+    /// the returned text starts with the first condition (no leading tabs, for appending after
+    /// "if ") and every following condition sits on its own line at <paramref name="indent"/> + 1
+    /// tab. Returns null when the first condition carries standalone -- comments, which must keep
+    /// their own line above the condition — the caller then falls back to the keyword-only layout.
+    /// </summary>
+    public static string? EmitConditionsInline(List<AstNode> conditions, FormatterEngine engine, int indent)
+    {
+        if (conditions.Count == 0) return null;
+        if (conditions[0] is ConditionNode head && head.LeadingComments.Count > 0) return null;
+
+        var lines = new List<string>();
+        foreach (var c in conditions)
+        {
+            if (c is ConditionNode cond)
+            {
+                // Standalone comments on their own line(s) above the condition.
+                lines.AddRange(cond.LeadingComments);
+                string prefix = cond.LogicalOp != null ? $"{cond.LogicalOp} " : "";
+                string expr   = EmitExpr(cond.Expression, engine, indent + 1);
+                string cmt    = cond.TrailingComment != null ? $" {cond.TrailingComment}" : "";
+                lines.Add($"{prefix}{expr}{cmt}");
+            }
+            else
+            {
+                lines.Add(EmitExpr(c, engine, indent + 1));
+            }
+        }
+        return lines[0] + string.Concat(lines.Skip(1).Select(l => $"\n{Tabs(indent + 1)}{l}"));
+    }
+
+    /// <summary>
+    /// Renders the body of an IF / ELSE branch. A BEGIN…END block starts on the next line at the
+    /// IF's own indent — the blank lines the block already carries separate it from the
+    /// conditions. Any other statement is offset by one tab and separated from the conditions
+    /// (or from ELSE) by an empty line, so the executed statement never blends into them.
+    /// </summary>
+    public static string EmitBranchBody(AstNode body, FormatterEngine engine, int indent)
+        => body is BeginEndNode
+            ? $"\n{engine.Format(body, indent)}"
+            : $"\n\n{engine.Format(body, indent + 1)}";
+
     // ─── Table ref emitter ──────────────────────────────────────────────────
 
     public static string EmitTableRef(TableRefNode t, FormatterEngine engine, int indent = 0)

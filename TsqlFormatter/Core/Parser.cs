@@ -474,6 +474,10 @@ public sealed class Parser
                 // is critical: an initializer-less last variable ("@x float;") must not
                 // swallow the ';' and every following statement up to the next SELECT/GO.
                 if (typeDepth == 0 && (PeekIs(TokenType.Equals) || PeekIs(TokenType.Comma) || PeekIs(TokenType.Semicolon))) break;
+                // A comment never belongs to the data type: swallowing it would render as
+                // "@b float --note" glued into the type. Leave it for the trailing-comment
+                // check below (same line) or for the next statement (standalone).
+                if (t.Type is TokenType.LineComment or TokenType.BlockComment) break;
                 if (t.IsKeyword("SELECT") || t.Type == TokenType.DeclareKeyword
                     || IsGoKeyword() || t.Type == TokenType.EndOfFile) break;
                 // A statement-boundary keyword also ends the type (defensive when there is no
@@ -1694,6 +1698,8 @@ public sealed class Parser
     private RawTokensNode ParseRawStatement()
     {
         var raw = new RawTokensNode();
+        int parenDepth = 0;
+        int caseDepth  = 0;
         while (!IsAtEnd())
         {
             var t = Peek();
@@ -1704,6 +1710,22 @@ public sealed class Parser
                 || t.IsKeyword("COMMIT")|| t.IsKeyword("ROLLBACK")
                 || t.Type == TokenType.DeclareKeyword
                 || t.Type == TokenType.EndOfFile || IsGoKeyword()) break;
+            // END closes the enclosing BEGIN block and ELSE opens the alternative branch of an
+            // IF — a raw statement ("print 'x'", "exec …") must stop before them, otherwise the
+            // block/branch structure is swallowed and the BEGIN loses its END. An END that
+            // closes a CASE inside the statement is not a boundary, so CASE nesting is tracked.
+            if (parenDepth == 0 && caseDepth == 0 && (t.IsKeyword("END") || t.IsKeyword("ELSE")))
+                break;
+            // A comment on a LATER line is standalone — it belongs to whatever follows, not to
+            // this statement (otherwise "print 'x'" drags the next statement's comment into the
+            // IF branch it sits in). A same-line comment stays with the statement.
+            if (raw.Tokens.Count > 0 && t.Type is TokenType.LineComment or TokenType.BlockComment
+                && PeekSameLine() == null)
+                break;
+            if (t.IsKeyword("CASE"))                        caseDepth++;
+            else if (t.IsKeyword("END") && caseDepth > 0)    caseDepth--;
+            else if (t.Type == TokenType.LeftParen)          parenDepth++;
+            else if (t.Type == TokenType.RightParen)         parenDepth--;
             raw.Tokens.Add(Advance());
         }
         return raw;
@@ -1729,6 +1751,9 @@ public sealed class Parser
             || t.IsKeyword("EXEC")   || t.IsKeyword("EXECUTE")|| t.IsKeyword("IF")
             || t.IsKeyword("WHILE")  || t.IsKeyword("RETURN") || t.IsKeyword("PRINT")
             || t.IsKeyword("MERGE")  || t.IsKeyword("TRUNCATE")
+            // ELSE starts the alternative branch of an IF: "if … select 1 else select 0" must
+            // not take "else" as the alias of the last column.
+            || t.IsKeyword("ELSE")
             || t.IsKeyword("SET")    || t.IsKeyword("COMMIT") || t.IsKeyword("ROLLBACK")
             || t.Type == TokenType.DeclareKeyword
             || t.Type == TokenType.EndOfFile || t.Type == TokenType.RightParen
@@ -1742,6 +1767,7 @@ public sealed class Parser
         || t.IsKeyword("SELECT") || t.IsKeyword("INSERT") || t.IsKeyword("UPDATE")
         || t.IsKeyword("DELETE") || t.IsKeyword("CREATE") || t.IsKeyword("DROP")
         || t.IsKeyword("BEGIN")  || t.IsKeyword("END")    || t.IsKeyword("EXEC")
+        || t.IsKeyword("ELSE")
         || t.IsKeyword("EXECUTE")|| t.IsKeyword("IF")     || t.IsKeyword("WHILE")
         || t.IsKeyword("RETURN") || t.IsKeyword("PRINT")  || t.IsKeyword("MERGE")
         || t.IsKeyword("TRUNCATE") || t.IsKeyword("SET")

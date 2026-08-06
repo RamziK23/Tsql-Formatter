@@ -68,12 +68,20 @@ public sealed class ControlFlowRule : IFormatterRule
             case IfNode iff:
             {
                 var sb = new StringBuilder();
-                sb.Append($"{tabs}if\n{RuleHelpers.EmitConditions(iff.Conditions, engine, indent + 1)}");
-                if (iff.Then != null) sb.Append($"\n{engine.Format(iff.Then, indent + 1)}");
+                // The first condition stays on the "if" line; the rest follow one tab in.
+                var inline = RuleHelpers.EmitConditionsInline(iff.Conditions, engine, indent);
+                if (inline != null)
+                    sb.Append($"{tabs}if {inline}");
+                else
+                    sb.Append($"{tabs}if\n{RuleHelpers.EmitConditions(iff.Conditions, engine, indent + 1)}");
+
+                if (iff.Then != null) sb.Append(RuleHelpers.EmitBranchBody(iff.Then, engine, indent));
                 if (iff.Else != null)
                 {
-                    sb.Append($"\n{tabs}else");
-                    sb.Append($"\n{engine.Format(iff.Else, indent + 1)}");
+                    // A BEGIN…END then-branch already ends with its own "end" line, so ELSE
+                    // follows it directly; a bare statement gets the blank-line separator.
+                    sb.Append(iff.Then is BeginEndNode ? $"\n{tabs}else" : $"\n\n{tabs}else");
+                    sb.Append(RuleHelpers.EmitBranchBody(iff.Else, engine, indent));
                 }
                 return sb.ToString();
             }

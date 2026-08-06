@@ -7,9 +7,9 @@ namespace TsqlFormatter.Rules
 {
 
 /// <summary>
-/// Rule: DECLARE with variables each on its own indented line.
-///   declare
-///       @var1 type = value,
+/// Rule: DECLARE — the first variable stays on the "declare" line, every following one moves
+/// to its own line one tab in.
+///   declare @var1 type = value,
 ///       @var2 type
 /// </summary>
 public sealed class DeclareRule : IFormatterRule
@@ -24,7 +24,7 @@ public sealed class DeclareRule : IFormatterRule
 
         sb.Append($"{tabs}declare");
 
-        // Every variable on its own indented line, even a single one.
+        // First variable on the declare line; each following one on its own line (+1 tab).
         for (int i = 0; i < d.Variables.Count; i++)
         {
             var v        = d.Variables[i];
@@ -32,7 +32,8 @@ public sealed class DeclareRule : IFormatterRule
             var init     = v.Initializer != null
                 ? $" = {RuleHelpers.EmitExpr(v.Initializer, engine, indent + 1)}"
                 : "";
-            sb.Append($"\n{tabs}\t{v.Variable.Value} {dataType}{init}");
+            var lead     = i == 0 ? " " : $"\n{tabs}\t";
+            sb.Append($"{lead}{v.Variable.Value} {dataType}{init}");
             if (i < d.Variables.Count - 1) sb.Append(",");
             if (v.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(v.TrailingComment));
         }

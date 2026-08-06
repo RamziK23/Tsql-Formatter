@@ -38,14 +38,14 @@ public static class TestCases
         new TestCase {
             Rule = "stmtbound", Name = "comment then DECLARE after assignment select is not swallowed as columns",
             Input    = "select @x = dateadd(ss, -1, @x)\n--select @x\n\ndeclare @dt varchar(255)",
-            Expected = "select\n\t@x = dateadd(ss, -1, @x)\n--select @x\n\ndeclare\n\t@dt varchar(255)",
+            Expected = "select @x = dateadd(ss, -1, @x)\n--select @x\n\ndeclare @dt varchar(255)",
         },
 
         // ── programmable objects / functions ──────────────────────────────────
         new TestCase {
             Rule = "function", Name = "create function: paren on name line, params/if/return formatted, no hang",
             Input    = "create function dbo.f(@a int) returns int as begin if @a is null return 0; return @a; end go",
-            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif\n\t\t@a is null\n\t\treturn 0\n\n\treturn @a\n\nend\n\nGO",
+            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif @a is null\n\n\t\treturn 0\n\n\treturn @a\n\nend\n\nGO",
         },
         new TestCase {
             Rule = "function", Name = "compound assignment += stays a single operator",
@@ -55,7 +55,7 @@ public static class TestCases
         new TestCase {
             Rule = "declare", Name = "initializer-less last variable stops at ';' (no over-consumption)",
             Input    = "declare @x int;\nselect 1 from t",
-            Expected = "declare\n\t@x int\nselect\n\t1\nfrom t",
+            Expected = "declare @x int\nselect\n\t1\nfrom t",
         },
 
         // ── DROP TABLE trailing comment (bug 7) ──────────────────────────────
@@ -135,12 +135,12 @@ public static class TestCases
         new TestCase {
             Rule = "2.15", Name = "declare: type parens have no inner spaces",
             Input    = "declare @a int, @b varchar(50)",
-            Expected = "declare\n\t@a int,\n\t@b varchar(50)",
+            Expected = "declare @a int,\n\t@b varchar(50)",
         },
         new TestCase {
             Rule = "2.15", Name = "declare: decimal(18, 2) spacing",
             Input    = "declare @m decimal(18,2)",
-            Expected = "declare\n\t@m decimal(18, 2)",
+            Expected = "declare @m decimal(18, 2)",
         },
         new TestCase {
             Rule = "2.15", Name = "window function: space before over (",
@@ -182,12 +182,12 @@ public static class TestCases
         new TestCase {
             Rule = "stmtbound", Name = "assignment select column list ends at DECLARE",
             Input    = "select @yy=2026,@mm=6\ndeclare @z int",
-            Expected = "select\n\t@yy = 2026,\n\t@mm = 6\ndeclare\n\t@z int",
+            Expected = "select @yy = 2026,\n\t@mm = 6\ndeclare @z int",
         },
         new TestCase {
             Rule = "stmtbound", Name = "assignment select column list ends at EXEC",
             Input    = "select @x = 1\nexec('do_something')",
-            Expected = "select\n\t@x = 1\nexec('do_something')",
+            Expected = "select @x = 1\nexec('do_something')",
         },
         new TestCase {
             Rule = "2.15", Name = "function call: no space before (",
@@ -291,12 +291,12 @@ public static class TestCases
         new TestCase {
             Rule = "2.13", Name = "concatenated dynamic sql fragments emitted verbatim",
             Input    = "declare @x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
-            Expected = "declare\n\t@x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
+            Expected = "declare @x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
         },
         new TestCase {
             Rule = "2.13", Name = "multiline dynamic sql string emitted verbatim (no reindent)",
             Input    = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from '+b.dbName+'.dbo.contract'+b.suffix+'\n' from webcar.dbo.billing as b",
-            Expected = "declare\n\t@s varchar(max) = ''\nselect\n\t@s = @s + '\n    select\n        id,\n        title\n    from ' + b.dbName + '.dbo.contract' + b.suffix + '\n'\nfrom webcar.dbo.billing as b",
+            Expected = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from ' + b.dbName + '.dbo.contract' + b.suffix + '\n'\nfrom webcar.dbo.billing as b",
         },
 
         // ── 2.4 subquery in IN ────────────────────────────────────────────────
@@ -368,7 +368,7 @@ public static class TestCases
         new TestCase {
             Rule = "2.8", Name = "begin/end with declare and select, no extra end column",
             Input    = "BEGIN\nDECLARE @a INT = 1, @b INT = 2\nSELECT @a, @b\nEND",
-            Expected = "begin\n\n\tdeclare\n\t\t@a int = 1,\n\t\t@b int = 2\n\n\tselect\n\t\t@a,\n\t\t@b\n\nend",
+            Expected = "begin\n\n\tdeclare @a int = 1,\n\t\t@b int = 2\n\n\tselect\n\t\t@a,\n\t\t@b\n\nend",
         },
 
         // ── fragments (partial selections) ────────────────────────────────────
@@ -468,7 +468,7 @@ public static class TestCases
         new TestCase {
             Rule = "comments", Name = "declare trailing comment after comma",
             Input    = "declare @a int = 1, --note\n@b int = 2",
-            Expected = "declare\n\t@a int = 1,\t\t--note\n\t@b int = 2",
+            Expected = "declare @a int = 1,\t\t--note\n\t@b int = 2",
         },
         new TestCase {
             Rule = "condgroup", Name = "parenthesized condition group with and/or",
@@ -569,22 +569,22 @@ public static class TestCases
         new TestCase {
             Rule = "declare", Name = "next-line comment after declare stays standalone (bug 6)",
             Input    = "declare @a date = getdate()\n--next line comment\nselect 1 from t",
-            Expected = "declare\n\t@a date = getdate()\n--next line comment\nselect\n\t1\nfrom t",
+            Expected = "declare @a date = getdate()\n--next line comment\nselect\n\t1\nfrom t",
         },
         new TestCase {
-            Rule = "declare", Name = "single variable on its own indented line",
+            Rule = "declare", Name = "single variable stays on the declare line",
             Input    = "declare @be int = 1",
-            Expected = "declare\n\t@be int = 1",
+            Expected = "declare @be int = 1",
         },
         new TestCase {
             Rule = "declare", Name = "comment glued to value (1--test2)",
             Input    = "declare @be int = 1--test2",
-            Expected = "declare\n\t@be int = 1\t\t--test2",
+            Expected = "declare @be int = 1\t\t--test2",
         },
         new TestCase {
             Rule = "declare", Name = "standalone comment before declare",
             Input    = "--test\ndeclare @be int = 1",
-            Expected = "--test\ndeclare\n\t@be int = 1",
+            Expected = "--test\ndeclare @be int = 1",
         },
         new TestCase {
             Rule = "declare", Name = "exponent literal not broken by number lexing",
@@ -594,17 +594,17 @@ public static class TestCases
         new TestCase {
             Rule = "begincomment", Name = "comment attaches to declare inside begin/end",
             Input    = "begin\n\n--test\ndeclare @be int = 1--test2\n\ndeclare @b2e int = 1,\n@dt varchar(255) = ''\n\nend",
-            Expected = "begin\n\n\t--test\n\tdeclare\n\t\t@be int = 1\t\t--test2\n\n\tdeclare\n\t\t@b2e int = 1,\n\t\t@dt varchar(255) = ''\n\nend",
+            Expected = "begin\n\n\t--test\n\tdeclare @be int = 1\t\t--test2\n\n\tdeclare @b2e int = 1,\n\t\t@dt varchar(255) = ''\n\nend",
         },
         new TestCase {
             Rule = "declarecomment", Name = "leading comment + declare with glued trailing comment (top level)",
             Input    = "--test\ndeclare @be int = 1--test2\n\ndeclare @b2e int = 1,\n@dt varchar(255) = ''",
-            Expected = "--test\ndeclare\n\t@be int = 1\t\t--test2\n\ndeclare\n\t@b2e int = 1,\n\t@dt varchar(255) = ''",
+            Expected = "--test\ndeclare @be int = 1\t\t--test2\n\ndeclare @b2e int = 1,\n\t@dt varchar(255) = ''",
         },
         new TestCase {
             Rule = "nstring", Name = "N-prefixed unicode string literals kept intact",
             Input    = "select @city=N'***',@utm=N'***',@report_sale_user=0,@process_status_id=-1,@source_title=N'***'",
-            Expected = "select\n\t@city = N'***',\n\t@utm = N'***',\n\t@report_sale_user = 0,\n\t@process_status_id = -1,\n\t@source_title = N'***'",
+            Expected = "select @city = N'***',\n\t@utm = N'***',\n\t@report_sale_user = 0,\n\t@process_status_id = -1,\n\t@source_title = N'***'",
         },
         new TestCase {
             Rule = "nstring", Name = "N identifier (not a string) untouched",
@@ -704,9 +704,9 @@ public static class TestCases
             Expected = "create table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
         new TestCase {
-            Rule = "2.14", Name = "if object_id drop/create: if condition on its own line, lowercased",
+            Rule = "2.14", Name = "if object_id drop/create: condition on the if line, lowercased",
             Input    = "IF OBJECT_ID('TempDb..#x') is not null DROP TABLE #x\nCREATE TABLE #x(\n\tprocess INT,\n\tprocess_status_id INT\n)",
-            Expected = "if\n\tobject_id('TempDb..#x') is not null\n\tdrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
+            Expected = "if object_id('TempDb..#x') is not null\n\n\tdrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
 
         // ── transactions: BEGIN TRAN is a statement, not a BEGIN...END block ──
@@ -735,7 +735,7 @@ public static class TestCases
         new TestCase {
             Rule = "stmtbound", Name = "set statement after assignment select is not a column",
             Input    = "select @a = 1\nset @b = 2",
-            Expected = "select\n\t@a = 1\nset @b = 2",
+            Expected = "select @a = 1\nset @b = 2",
         },
         new TestCase {
             Rule = "stmtbound", Name = "identifier statement after select is not swallowed with an invented comma",
@@ -825,7 +825,64 @@ public static class TestCases
         new TestCase {
             Rule = "declare", Name = "table variable: space between table and its column list",
             Input    = "declare @t table (id int, name varchar(50))",
-            Expected = "declare\n\t@t table (id int, name varchar(50))",
+            Expected = "declare @t table (id int, name varchar(50))",
+        },
+
+        // ── First argument on the keyword line: declare / assignment select / if ──
+        new TestCase {
+            Rule = "declare", Name = "first variable on the declare line, the rest one tab in",
+            Input    = "declare @i int, @a varchar(200), @b float",
+            Expected = "declare @i int,\n\t@a varchar(200),\n\t@b float",
+        },
+        new TestCase {
+            Rule = "assign", Name = "assignment select: first assignment on the select line",
+            Input    = "select @a = 'делай так', @i = 67, @b = 12.3",
+            Expected = "select @a = 'делай так',\n\t@i = 67,\n\t@b = 12.3",
+        },
+        new TestCase {
+            Rule = "assign", Name = "assignment select with from: first assignment on the select line",
+            Input    = "select @a = t.name, @b = t.cnt from dbo.t as t where t.id = 1",
+            Expected = "select @a = t.name,\n\t@b = t.cnt\nfrom dbo.t as t\nwhere\n\tt.id = 1",
+        },
+        new TestCase {
+            Rule = "assign", Name = "result-set select keeps every column on its own line",
+            Input    = "select @a, @b",
+            Expected = "select\n\t@a,\n\t@b",
+        },
+        new TestCase {
+            Rule = "assign", Name = "mixed assignment/plain column list is not an assignment select",
+            Input    = "select @a = 1, b",
+            Expected = "select\n\t@a = 1,\n\tb",
+        },
+        new TestCase {
+            Rule = "assign", Name = "-- comment above the first assignment keeps the broken-out layout",
+            Input    = "select --note\n@a = 1, @b = 2",
+            Expected = "select\n\t--note\n\t@a = 1,\n\t@b = 2",
+        },
+        new TestCase {
+            Rule = "if", Name = "first condition on the if line, the rest one tab in",
+            Input    = "if @i < 1 and @b >= 1 print('1')",
+            Expected = "if @i < 1\n\tand @b >= 1\n\n\tprint('1')",
+        },
+        new TestCase {
+            Rule = "if", Name = "if/else without begin end: blank line between conditions and body",
+            Input    = "if @i < 1 and @b >= 1\nprint('1')\nelse\nprint('0')",
+            Expected = "if @i < 1\n\tand @b >= 1\n\n\tprint('1')\n\nelse\n\n\tprint('0')",
+        },
+        new TestCase {
+            Rule = "if", Name = "if/else with begin end: block at the if indent, no extra blank line",
+            Input    = "if @i < 1 and @b >= 1\nbegin\nprint('1')\nend\nelse\nbegin\nprint('0')\nend",
+            Expected = "if @i < 1\n\tand @b >= 1\nbegin\n\n\tprint('1')\n\nend\nelse\nbegin\n\n\tprint('0')\n\nend",
+        },
+        new TestCase {
+            Rule = "if", Name = "else branch with a select body",
+            Input    = "if @i < 1 select 1 else select 0",
+            Expected = "if @i < 1\n\n\tselect\n\t\t1\n\nelse\n\n\tselect\n\t\t0",
+        },
+        new TestCase {
+            Rule = "if", Name = "comment after a raw if body belongs to the next statement",
+            Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
+            Expected = "if @i < 1\n\n\tprint('1')\n\n--next\nprint('2')",
         },
     };
 }

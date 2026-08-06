@@ -43,7 +43,10 @@ public sealed class SelectRule : IFormatterRule
         if (sel.TopExpr != null) header.Append($" top {sel.TopExpr}");
 
         // ── Columns ───────────────────────────────────────────────────────────
-        // Every column goes on its own indented line (+1 tab), regardless of count.
+        // Every column goes on its own indented line (+1 tab), regardless of count — except in
+        // an assignment SELECT ("select @a = 1, @b = 2"), where the first assignment stays on
+        // the select line like a declare.
+        bool inlineFirst = IsVariableAssignment(sel);
         sb.Append(header);
         for (int i = 0; i < sel.Columns.Count; i++)
         {
@@ -57,7 +60,10 @@ public sealed class SelectRule : IFormatterRule
             // Leading comments: -- line comments each on their own line above the column;
             // /* */ block comments inline before the expression.
             var (lineLead, blockLead) = RuleHelpers.SplitLeadingComments(col.LeadingComments, $"{tabs}\t");
-            sb.Append($"\n{lineLead}{tabs}\t{blockLead}{colStr}{alias}{comma}{comment}");
+            if (inlineFirst && i == 0)
+                sb.Append($" {blockLead}{colStr}{alias}{comma}{comment}");
+            else
+                sb.Append($"\n{lineLead}{tabs}\t{blockLead}{colStr}{alias}{comma}{comment}");
         }
 
         // ── INTO (SELECT ... INTO #tbl) ───────────────────────────────────────
@@ -132,6 +138,26 @@ public sealed class SelectRule : IFormatterRule
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// True when the SELECT only assigns values to variables ("select @a = 'x', @i = 67"), i.e.
+    /// it fills variables instead of producing a result set. Such a SELECT is laid out like a
+    /// DECLARE: the first assignment on the select line, the rest one tab in.
+    /// A -- comment above the first column keeps the regular layout (it needs its own line).
+    /// </summary>
+    private static bool IsVariableAssignment(SelectStatementNode sel)
+    {
+        if (sel.Columns.Count == 0) return false;
+        if (sel.Columns[0].LeadingComments.Any(c => !c.StartsWith("/*"))) return false;
+        return sel.Columns.All(c => c.Alias == null && IsAssignmentToVariable(c.Expression));
+    }
+
+    private static bool IsAssignmentToVariable(AstNode expr) =>
+        expr is BinaryExprNode b
+        && b.Op.Type == TokenType.Equals
+        && b.Left is ColumnRefNode target
+        && target.Parts.Count > 0
+        && target.Parts[0].Type == TokenType.Variable;
 
 }
 
