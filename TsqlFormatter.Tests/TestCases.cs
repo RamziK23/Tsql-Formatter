@@ -879,6 +879,28 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\n\n\tselect\n\t\t1\n\nelse\n\n\tselect\n\t\t0",
         },
+        // ── /* */ comments inside an IN list keep their position ─────────────
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment before the first IN value is kept",
+            Input    = "select a from t where x in (/*11,*/54,/*56,*/24,26,49)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (/*11,*/54, /*56,*/24, 26, 49)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment after a value stays glued to it",
+            Input    = "select a from t where x in (1, 2 /*two*/, 3)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (1, 2/*two*/, 3)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment before the closing paren sticks to the last value",
+            Input    = "select a from t where x in (1, 2 /*tail*/)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (1, 2/*tail*/)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "leading block comment survives a -- comment breaking the list",
+            Input    = "select a from t where x in (1, --note\n2, /*c*/3)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (\n\t\t1,\t\t--note\n\t\t2,\n\t\t/*c*/3\n\t)",
+        },
+
         // ── Unfinished construct at the end of the selection ──────────────────
         new TestCase {
             Rule = "parse-safety", Name = "statements before a cut-off tail are still formatted",

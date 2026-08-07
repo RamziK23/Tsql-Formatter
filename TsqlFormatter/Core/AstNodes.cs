@@ -232,9 +232,11 @@ public sealed class InExprNode : AstNode
     public List<AstNode> Values { get; } = new();
     /// <summary>Set when the IN list is a subquery: x in (select ...).</summary>
     public SubQueryNode? SubQuery { get; init; }
+    /// <summary>True when a -- comment forces the list onto separate lines. A /* */ block
+    /// comment is transparent and keeps the list inline, so it does not count here.</summary>
     public bool HasComments => Values.Any(v =>
         v is CommentedValueNode ||
-        (v is InValueGroupNode g && (g.LeadingBlockComment != null || g.TrailingLineComment != null)));
+        (v is InValueGroupNode g && g.TrailingLineComment != null));
 }
 
 public sealed class CommentedValueNode : AstNode

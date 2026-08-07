@@ -1354,13 +1354,15 @@ public sealed class Parser
     }
 
     /// <summary>
-    /// Parses an IN value list. /* */ block comments are transparent — each glues to the
-    /// preceding value and the list stays inline. A -- line comment attaches to the preceding
+    /// Parses an IN value list. /* */ block comments are transparent and keep the list inline:
+    /// a comment written BEFORE a value stays in front of that value ("in (/*11,*/54, …)"), one
+    /// written right after a value stays glued to it. A -- line comment attaches to the preceding
     /// value as a CommentedValueNode, which breaks the list onto separate lines (rule 2.3.2).
     /// </summary>
     private List<AstNode> ParseInList()
     {
         var list = new List<AstNode>();
+        string? pendingLead = null;   // /* */ comment(s) seen before the next value
         while (!IsAtEnd())
         {
             while (_pos < _tokens.Count && _tokens[_pos].Type is TokenType.Whitespace or TokenType.Newline)
@@ -1369,8 +1371,13 @@ public sealed class Parser
             var t = _tokens[_pos].Type;
             if (t == TokenType.RightParen) break;
             if (t == TokenType.Comma) { _pos++; continue; }
-            // A /* */ block comment between values is transparent — glue it to the preceding value.
-            if (t == TokenType.BlockComment) { GlueInListBlockComment(list, _tokens[_pos++].Value); continue; }
+            // A /* */ block comment before a value belongs in front of THAT value — including the
+            // very first one, which used to have no preceding value to glue to and was dropped.
+            if (t == TokenType.BlockComment)
+            {
+                pendingLead = (pendingLead ?? "") + _tokens[_pos++].Value;
+                continue;
+            }
             // A -- line comment between values attaches to the preceding value (breaks the list).
             if (t == TokenType.LineComment) { PromoteLastToCommented(list, _tokens[_pos++].Value); continue; }
 
@@ -1387,9 +1394,22 @@ public sealed class Parser
                 while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace) _pos++;
             }
 
-            list.Add(lineComment != null
-                ? new CommentedValueNode { Value = val, TrailingComment = lineComment }
-                : val);
+            AstNode item = val;
+            if (pendingLead != null)
+            {
+                item = new InValueGroupNode { LeadingBlockComment = pendingLead }.Tap(g => g.Values.Add(val));
+                pendingLead = null;
+            }
+            if (lineComment != null)
+                item = new CommentedValueNode { Value = item, TrailingComment = lineComment };
+            list.Add(item);
+        }
+        // A comment right before the closing paren has no value to lead — keep it on the last one,
+        // or as the only content when the list holds nothing else.
+        if (pendingLead != null)
+        {
+            if (list.Count > 0) GlueInListBlockComment(list, pendingLead);
+            else                list.Add(new InValueGroupNode { LeadingBlockComment = pendingLead });
         }
         return list;
     }
@@ -1397,8 +1417,8 @@ public sealed class Parser
     /// <summary>Glues a transparent /* */ block comment onto the last parsed IN value.</summary>
     private static void GlueInListBlockComment(List<AstNode> list, string blockComment)
     {
-        if (list.Count == 0) return;   // leading comment with no preceding value (rare) — dropped
-        AttachGluedBlockComment(list[^1] is CommentedValueNode cv ? cv.Value : list[^1], blockComment);
+        if (list.Count == 0) return;   // comment inside an empty list — nothing to attach it to
+        AttachGluedBlockComment(list[^1], blockComment);
     }
 
     /// <summary>Glues any /* */ block comment(s) on the SAME line (whitespace-only before them,
@@ -1425,6 +1445,9 @@ public sealed class Parser
         {
             case LiteralNode l:   l.TrailingComment = (l.TrailingComment ?? "") + blockComment; break;
             case ColumnRefNode c: c.TrailingComment = (c.TrailingComment ?? "") + blockComment; break;
+            // Wrappers carry the comment down to the value they wrap.
+            case CommentedValueNode cv:                       AttachGluedBlockComment(cv.Value,     blockComment); break;
+            case InValueGroupNode g when g.Values.Count > 0:   AttachGluedBlockComment(g.Values[^1], blockComment); break;
             // other value kinds have no comment slot — the transparent comment is dropped (rare)
         }
     }

@@ -71,7 +71,8 @@ internal static class RuleHelpers
             SubQueryNode  sq => EmitSubQuery(sq, engine, indent),
             FunctionCallNode fn => EmitFunction(fn, engine, indent),
             CaseExprNode  ce => EmitCase(ce, engine, indent),
-            InValueGroupNode grp => string.Join(", ", grp.Values.Select(v => EmitExpr(v, engine, indent))),
+            InValueGroupNode grp => grp.LeadingBlockComment
+                                    + string.Join(", ", grp.Values.Select(v => EmitExpr(v, engine, indent))),
             NotExprNode n => $"not {EmitExpr(n.Inner, engine, indent)}",
             RawTokensNode rt => EmitRawTokens(rt.Tokens),
             _ => engine.Format(node, indent)
