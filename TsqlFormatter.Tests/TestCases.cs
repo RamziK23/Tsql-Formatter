@@ -45,7 +45,7 @@ public static class TestCases
         new TestCase {
             Rule = "function", Name = "create function: paren on name line, params/if/return formatted, no hang",
             Input    = "create function dbo.f(@a int) returns int as begin if @a is null return 0; return @a; end go",
-            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif @a is null\n\n\t\treturn 0\n\n\treturn @a\n\nend\n\nGO",
+            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif @a is null\n\treturn 0\n\n\treturn @a\n\nend\n\nGO",
         },
         new TestCase {
             Rule = "function", Name = "compound assignment += stays a single operator",
@@ -706,7 +706,7 @@ public static class TestCases
         new TestCase {
             Rule = "2.14", Name = "if object_id drop/create: condition on the if line, lowercased",
             Input    = "IF OBJECT_ID('TempDb..#x') is not null DROP TABLE #x\nCREATE TABLE #x(\n\tprocess INT,\n\tprocess_status_id INT\n)",
-            Expected = "if object_id('TempDb..#x') is not null\n\n\tdrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
+            Expected = "if object_id('TempDb..#x') is not null\ndrop table #x\ncreate table #x (\n\tprocess int,\n\tprocess_status_id int\n)",
         },
 
         // ── transactions: BEGIN TRAN is a statement, not a BEGIN...END block ──
@@ -862,12 +862,12 @@ public static class TestCases
         new TestCase {
             Rule = "if", Name = "first condition on the if line, the rest one tab in",
             Input    = "if @i < 1 and @b >= 1 print('1')",
-            Expected = "if @i < 1\n\tand @b >= 1\n\n\tprint('1')",
+            Expected = "if @i < 1\n\tand @b >= 1\nprint('1')",
         },
         new TestCase {
-            Rule = "if", Name = "if/else without begin end: blank line between conditions and body",
+            Rule = "if", Name = "if/else without begin end: body on the next line, no blank line",
             Input    = "if @i < 1 and @b >= 1\nprint('1')\nelse\nprint('0')",
-            Expected = "if @i < 1\n\tand @b >= 1\n\n\tprint('1')\n\nelse\n\n\tprint('0')",
+            Expected = "if @i < 1\n\tand @b >= 1\nprint('1')\nelse\nprint('0')",
         },
         new TestCase {
             Rule = "if", Name = "if/else with begin end: block at the if indent, no extra blank line",
@@ -875,9 +875,24 @@ public static class TestCases
             Expected = "if @i < 1\n\tand @b >= 1\nbegin\n\n\tprint('1')\n\nend\nelse\nbegin\n\n\tprint('0')\n\nend",
         },
         new TestCase {
+            Rule = "droptable", Name = "table name ends at the next statement",
+            Input    = "drop table #t\nupdate t set a = 1 where id = 5",
+            Expected = "drop table #t\nupdate t\nset\n\ta = 1\nwhere\n\tid = 5",
+        },
+        new TestCase {
+            Rule = "droptable", Name = "table name does not swallow the end of the enclosing block",
+            Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\nbegin\ndrop table #flag\nend",
+            Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\nbegin\n\n\tdrop table #flag\n\nend",
+        },
+        new TestCase {
+            Rule = "if", Name = "bare body sits at the if's own indent",
+            Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\ndrop table #flag",
+            Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\ndrop table #flag",
+        },
+        new TestCase {
             Rule = "if", Name = "else branch with a select body",
             Input    = "if @i < 1 select 1 else select 0",
-            Expected = "if @i < 1\n\n\tselect\n\t\t1\n\nelse\n\n\tselect\n\t\t0",
+            Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
         // ── comments inside GROUP BY / ORDER BY lists ────────────────────────
         new TestCase {
@@ -974,7 +989,7 @@ public static class TestCases
         new TestCase {
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
-            Expected = "if @i < 1\n\n\tprint('1')\n\n--next\nprint('2')",
+            Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
     };
 }

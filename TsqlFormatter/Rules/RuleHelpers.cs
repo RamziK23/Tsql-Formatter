@@ -396,15 +396,12 @@ internal static class RuleHelpers
     }
 
     /// <summary>
-    /// Renders the body of an IF / ELSE branch. A BEGIN…END block starts on the next line at the
-    /// IF's own indent — the blank lines the block already carries separate it from the
-    /// conditions. Any other statement is offset by one tab and separated from the conditions
-    /// (or from ELSE) by an empty line, so the executed statement never blends into them.
+    /// Renders the body of an IF / ELSE branch: on the next line at the IF's own indent, with no
+    /// blank line and no extra tab. A BEGIN…END block is the same — the blank lines it already
+    /// carries inside are what set the executed statements apart from the conditions.
     /// </summary>
     public static string EmitBranchBody(AstNode body, FormatterEngine engine, int indent)
-        => body is BeginEndNode
-            ? $"\n{engine.Format(body, indent)}"
-            : $"\n\n{engine.Format(body, indent + 1)}";
+        => $"\n{engine.Format(body, indent)}";
 
     // ─── Table ref emitter ──────────────────────────────────────────────────
 

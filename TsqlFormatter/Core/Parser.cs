@@ -1774,15 +1774,14 @@ public sealed class Parser
             bool ifExists = false;
             if (Peek().IsKeyword("IF")) { Advance(); Expect(TokenType.Keyword, "EXISTS"); ifExists = true; }
             var nameTokens = new System.Text.StringBuilder();
-            while (!IsAtEnd() && !IsGoKeyword() && Peek().Type != TokenType.EndOfFile
-                   && Peek().Type != TokenType.Semicolon
+            // The name ends at the next statement — every boundary keyword, not just a few:
+            // "drop table #t \n update t set …" used to glue the whole next statement into the
+            // name ("#tupdatetseta=1"), and an "end" closing the enclosing block was swallowed
+            // the same way, leaving the BEGIN without its END.
+            while (!IsAtEnd() && !IsStatementBoundary(Peek())
                    // A comment is never part of the table name; stop so a same-line -- comment
                    // is picked up as the statement's trailing comment instead of glued in.
-                   && Peek().Type != TokenType.LineComment && Peek().Type != TokenType.BlockComment
-                   && !Peek().IsKeyword("CREATE") && !Peek().IsKeyword("SELECT")
-                   && !Peek().IsKeyword("INSERT") && !Peek().IsKeyword("DROP")
-                   && !Peek().IsKeyword("BEGIN")
-                   && Peek().Type != TokenType.DeclareKeyword)
+                   && Peek().Type != TokenType.LineComment && Peek().Type != TokenType.BlockComment)
                 nameTokens.Append(Advance().Value);
             return new DropTableNode { IfExists = ifExists, TableName = nameTokens.ToString().Trim() };
         }

@@ -78,9 +78,7 @@ public sealed class ControlFlowRule : IFormatterRule
                 if (iff.Then != null) sb.Append(RuleHelpers.EmitBranchBody(iff.Then, engine, indent));
                 if (iff.Else != null)
                 {
-                    // A BEGIN…END then-branch already ends with its own "end" line, so ELSE
-                    // follows it directly; a bare statement gets the blank-line separator.
-                    sb.Append(iff.Then is BeginEndNode ? $"\n{tabs}else" : $"\n\n{tabs}else");
+                    sb.Append($"\n{tabs}else");
                     sb.Append(RuleHelpers.EmitBranchBody(iff.Else, engine, indent));
                 }
                 return sb.ToString();
