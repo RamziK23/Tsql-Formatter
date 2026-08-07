@@ -75,7 +75,21 @@ public sealed class Parser
             // A ';' before WITH is mandatory in T-SQL (the previous statement must be
             // terminated) — remember it so FormatScript can re-emit ";with ...".
             bool nextIsWith = Peek().IsKeyword("WITH");
-            var stmt = ParseStatement();
+            AstNode? stmt;
+            try
+            {
+                stmt = ParseStatement();
+            }
+            catch (ParseException) when (Peek().Type == TokenType.EndOfFile)
+            {
+                // The input ends in the middle of this construct — a selection cut short, e.g.
+                // "… from openquery(" with the rest missing. Everything before it parsed fine,
+                // so keep that and emit the unfinished tail exactly as written instead of
+                // giving up on the whole script.
+                script.UnparsedTail = RawTextFrom(beforeStmt);
+                script.UnparsedTailBlankBefore = newlinesBefore >= 2 && script.Statements.Count > 0;
+                break;
+            }
             // Forward-progress guarantee: never allow a zero-consumption iteration to loop
             // forever. If a statement was somehow not advanced, consume one token and move on.
             if (_pos == beforeStmt) { AdvanceRaw(); continue; }
@@ -1883,6 +1897,19 @@ public sealed class Parser
     }
 
     private Token PeekRaw() => _pos < _tokens.Count ? _tokens[_pos] : new Token(TokenType.EndOfFile, string.Empty);
+
+    /// <summary>
+    /// Rebuilds the original source text from token <paramref name="start"/> to the end. Every
+    /// token (including whitespace, newlines, comments and literals) keeps its raw text, so the
+    /// result is the input verbatim — used to pass an unparsable tail through untouched.
+    /// </summary>
+    private string RawTextFrom(int start)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = start; i < _tokens.Count; i++)
+            if (_tokens[i].Type != TokenType.EndOfFile) sb.Append(_tokens[i].Value);
+        return sb.ToString();
+    }
 
     /// <summary>
     /// If a line comment follows on the SAME line (only whitespace between here and it,

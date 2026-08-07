@@ -152,6 +152,12 @@ public sealed class FormatterEngine
             if (i > 0) sb.Append(parts[i].blank ? "\n\n" : "\n");
             sb.Append(parts[i].text);
         }
+        // A construct the input cut short is appended exactly as it was written.
+        if (script.UnparsedTail != null)
+        {
+            if (parts.Count > 0) sb.Append(script.UnparsedTailBlankBefore ? "\n\n" : "\n");
+            sb.Append(script.UnparsedTail.TrimEnd());
+        }
         return sb.ToString() + "\n";
     }
 }

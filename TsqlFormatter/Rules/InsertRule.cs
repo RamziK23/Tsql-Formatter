@@ -26,12 +26,12 @@ public sealed class InsertRule : IFormatterRule
 
         sb.Append($"{tabs}insert into {RuleHelpers.EmitTableRef(ins.Table, engine, indent)}");
 
-        // Column list: opening paren attached to the table name, each column on its own
+        // Column list: opening paren after a space (like create table), each column on its own
         // line (+1 tab), closing paren on its own line aligned with insert.
         if (ins.Columns.Count > 0)
         {
             var t1 = RuleHelpers.Tabs(indent + 1);
-            sb.Append("(\n");
+            sb.Append(" (\n");
             for (int i = 0; i < ins.Columns.Count; i++)
             {
                 sb.Append($"{t1}{RuleHelpers.EmitExpr(ins.Columns[i], engine, indent + 1)}");

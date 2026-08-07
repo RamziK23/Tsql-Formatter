@@ -102,17 +102,17 @@ public static class TestCases
         new TestCase {
             Rule = "2.12", Name = "insert into ... values",
             Input    = "insert into dbo.t (a, b, c) values (1, 2, 3)",
-            Expected = "insert into dbo.t(\n\ta,\n\tb,\n\tc\n)\nvalues\n\t(1, 2, 3)",
+            Expected = "insert into dbo.t (\n\ta,\n\tb,\n\tc\n)\nvalues\n\t(1, 2, 3)",
         },
         new TestCase {
             Rule = "2.12", Name = "insert column list only (no source), each col own line",
             Input    = "insert into #process(object_type, object_id, object_title)",
-            Expected = "insert into #process(\n\tobject_type,\n\tobject_id,\n\tobject_title\n)",
+            Expected = "insert into #process (\n\tobject_type,\n\tobject_id,\n\tobject_title\n)",
         },
         new TestCase {
             Rule = "2.12", Name = "insert column list + select source",
             Input    = "insert into dbo.t (a, b) select x, y from src",
-            Expected = "insert into dbo.t(\n\ta,\n\tb\n)\nselect\n\tx,\n\ty\nfrom src",
+            Expected = "insert into dbo.t (\n\ta,\n\tb\n)\nselect\n\tx,\n\ty\nfrom src",
         },
         // ── bitwise operators stay inline (same precedence as + -) ─────────────
         new TestCase {
@@ -879,6 +879,23 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\n\n\tselect\n\t\t1\n\nelse\n\n\tselect\n\t\t0",
         },
+        // ── Unfinished construct at the end of the selection ──────────────────
+        new TestCase {
+            Rule = "parse-safety", Name = "statements before a cut-off tail are still formatted",
+            Input    = "create table #process (\nobject_type varchar(255),\nobject_id int\n)\n\ninsert into #process(\nobject_type,\nobject_id\n)\nselect\nobject_type,\nobject_id\nfrom openquery(",
+            Expected = "create table #process (\n\tobject_type varchar(255),\n\tobject_id int\n)\n\ninsert into #process(\nobject_type,\nobject_id\n)\nselect\nobject_type,\nobject_id\nfrom openquery(",
+        },
+        new TestCase {
+            Rule = "parse-safety", Name = "cut-off tail with no blank line before it keeps its single newline",
+            Input    = "select a\nfrom t\nselect b from openquery(",
+            Expected = "select\n\ta\nfrom t\nselect b from openquery(",
+        },
+        new TestCase {
+            Rule = "parse-safety", Name = "unfinished first statement leaves the whole source untouched",
+            Input    = "select b from openquery(",
+            Expected = "select b from openquery(",
+        },
+
         // ── Blank line around a comment after a FROM with no WHERE ───────────
         new TestCase {
             Rule = "comments", Name = "blank line before a comment after from (no where) is kept",
@@ -898,7 +915,7 @@ public static class TestCases
         new TestCase {
             Rule = "comments", Name = "blank line around a comment inside begin/end is kept",
             Input    = "begin\n\ninsert into t2 (a)\nselect nc.a\nfrom #new as nc\n\n--следующий шаг\n\ninsert into t3 (a)\nselect nc.a\nfrom #new as nc\n\nend",
-            Expected = "begin\n\n\tinsert into t2(\n\t\ta\n\t)\n\tselect\n\t\tnc.a\n\tfrom #new as nc\n\n\t--следующий шаг\n\n\tinsert into t3(\n\t\ta\n\t)\n\tselect\n\t\tnc.a\n\tfrom #new as nc\n\nend",
+            Expected = "begin\n\n\tinsert into t2 (\n\t\ta\n\t)\n\tselect\n\t\tnc.a\n\tfrom #new as nc\n\n\t--следующий шаг\n\n\tinsert into t3 (\n\t\ta\n\t)\n\tselect\n\t\tnc.a\n\tfrom #new as nc\n\nend",
         },
         new TestCase {
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",

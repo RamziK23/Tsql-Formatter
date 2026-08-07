@@ -38,6 +38,14 @@ public sealed class ScriptNode : AstNode
     public List<AstNode> Statements { get; } = new();
     /// <summary>True when the source started with ; before the first statement (e.g. ;WITH).</summary>
     public bool HasLeadingSemicolon { get; set; }
+    /// <summary>
+    /// Source text of a construct that runs off the end of the input (a selection cut mid-statement,
+    /// e.g. "… from openquery(" with the rest missing). It is emitted verbatim after the statements
+    /// that did parse, so an unfinished tail costs only its own formatting — not the whole script's.
+    /// </summary>
+    public string? UnparsedTail { get; set; }
+    /// <summary>True when a blank line separated the unparsed tail from the previous statement.</summary>
+    public bool UnparsedTailBlankBefore { get; set; }
 }
 
 // ─── Statements ──────────────────────────────────────────────────────────────
