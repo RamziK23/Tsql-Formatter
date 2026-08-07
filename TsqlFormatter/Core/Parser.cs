@@ -26,7 +26,12 @@ public sealed class Parser
     //  Script
     // ═══════════════════════════════════════════════════════════════════════════
 
-    public ScriptNode Parse()
+    /// <param name="recoverPartialStatement">
+    /// When true (the default) a statement that runs off the end of the input keeps the longest
+    /// prefix of itself that still parses; the caller can re-parse with false to leave such a
+    /// statement whole and verbatim instead.
+    /// </param>
+    public ScriptNode Parse(bool recoverPartialStatement = true)
     {
         var script = new ScriptNode();
         bool isFirstStatement = true;
@@ -83,11 +88,25 @@ public sealed class Parser
             catch (ParseException) when (Peek().Type == TokenType.EndOfFile)
             {
                 // The input ends in the middle of this construct — a selection cut short, e.g.
-                // "… from openquery(" with the rest missing. Everything before it parsed fine,
-                // so keep that and emit the unfinished tail exactly as written instead of
-                // giving up on the whole script.
-                script.UnparsedTail = RawTextFrom(beforeStmt);
-                script.UnparsedTailBlankBefore = newlinesBefore >= 2 && script.Statements.Count > 0;
+                // "… from openquery(" with the rest missing. Keep as much as still parses: the
+                // longest prefix of the statement is formatted, and only the unfinished remainder
+                // is emitted exactly as written. If nothing parses, the whole statement is.
+                int tailStart = beforeStmt;
+                AstNode? recovered = null;
+                if (recoverPartialStatement) recovered = TryParseLongestPrefix(beforeStmt, out tailStart);
+                if (recovered != null)
+                {
+                    if (newlinesBefore >= 2 && script.Statements.Count > 0)
+                        recovered.BlankLineBefore = true;
+                    script.Statements.Add(recovered);
+                    script.UnparsedTail = RawTextFrom(tailStart);
+                    script.UnparsedTailGlued = true;
+                }
+                else
+                {
+                    script.UnparsedTail = RawTextFrom(beforeStmt);
+                    script.UnparsedTailBlankBefore = newlinesBefore >= 2 && script.Statements.Count > 0;
+                }
                 break;
             }
             // Forward-progress guarantee: never allow a zero-consumption iteration to loop
@@ -1920,6 +1939,44 @@ public sealed class Parser
     }
 
     private Token PeekRaw() => _pos < _tokens.Count ? _tokens[_pos] : new Token(TokenType.EndOfFile, string.Empty);
+
+    /// <summary>
+    /// After a statement ran off the end of the input, finds the longest prefix of it that still
+    /// parses as a whole statement: trailing tokens are dropped one at a time and the prefix is
+    /// re-parsed. Returns that statement and sets <paramref name="tailStart"/> to the token where
+    /// the leftover begins — the original whitespace between the two included, so the remainder can
+    /// be appended exactly where it stood. Returns null when no prefix parses.
+    /// </summary>
+    private AstNode? TryParseLongestPrefix(int start, out int tailStart)
+    {
+        tailStart = start;
+
+        var meaningful = new List<int>();
+        for (int i = start; i < _tokens.Count; i++)
+            if (!Skippable.Contains(_tokens[i].Type) && _tokens[i].Type != TokenType.EndOfFile)
+                meaningful.Add(i);
+
+        // A cut-short tail is short: try the longest prefixes first and give up after a while
+        // rather than rescanning a huge statement token by token.
+        const int maxAttempts = 200;
+        int attempts = 0;
+        for (int last = meaningful.Count - 1; last >= 1 && attempts < maxAttempts; last--, attempts++)
+        {
+            var slice = _tokens.GetRange(start, meaningful[last] - start);
+            slice.Add(new Token(TokenType.EndOfFile, string.Empty));
+            var sub = new Parser(slice);
+            try
+            {
+                var stmt = sub.ParseStatement();
+                // The prefix must be consumed whole — leftover tokens would be silently lost.
+                if (stmt == null || !sub.IsAtEnd()) continue;
+                tailStart = meaningful[last - 1] + 1;
+                return stmt;
+            }
+            catch (ParseException) { }
+        }
+        return null;
+    }
 
     /// <summary>
     /// Rebuilds the original source text from token <paramref name="start"/> to the end. Every

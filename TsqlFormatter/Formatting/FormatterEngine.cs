@@ -33,7 +33,17 @@ public sealed class FormatterEngine
 
             // Fall back to full-statement parsing.
             var script = new Parser(new Lexer(source).Tokenize()).Parse();
-            return engine.FormatScript(script);
+            var text = engine.FormatScript(script);
+
+            // When a statement was cut short, only its parsable prefix went through the rules —
+            // and a prefix can end on a clause the emitter drops when it is empty (a dangling
+            // "where", say). Verify that nothing from the source went missing; if something did,
+            // re-format leaving that whole statement verbatim.
+            if (script.UnparsedTailGlued && !KeepsEveryToken(source, text))
+                text = engine.FormatScript(
+                    new Parser(new Lexer(source).Tokenize()).Parse(recoverPartialStatement: false));
+
+            return text;
         }
         catch (ParseException)
         {
@@ -41,6 +51,48 @@ public sealed class FormatterEngine
             // rather than emit desynchronized/broken SQL.
             return source;
         }
+    }
+
+    /// <summary>
+    /// True when every meaningful token of <paramref name="source"/> — names, literals, variables
+    /// and keywords, compared case-insensitively — is still present in <paramref name="result"/>.
+    /// Whitespace, punctuation and comments are ignored, and additions are fine (an alias rewrite
+    /// introduces "as"): the point is that formatting must never make part of the input vanish.
+    /// </summary>
+    private static bool KeepsEveryToken(string source, string result)
+    {
+        try
+        {
+            var have = MeaningfulTokens(result);
+            foreach (var kv in MeaningfulTokens(source))
+            {
+                have.TryGetValue(kv.Key, out int n);
+                if (n < kv.Value) return false;
+            }
+            return true;
+        }
+        catch { return false; }   // could not verify — treat as unsafe
+    }
+
+    private static Dictionary<string, int> MeaningfulTokens(string text)
+    {
+        var counts = new Dictionary<string, int>();
+        foreach (var t in new Lexer(text).Tokenize())
+        {
+            if (t.Type is TokenType.Whitespace or TokenType.Newline or TokenType.EndOfFile
+                or TokenType.LineComment or TokenType.BlockComment) continue;
+            // "left outer join" is normalized to "left join" (rule 2.2), so OUTER is the one
+            // word the formatter is meant to drop — it must not count as lost text.
+            if (t.Value.Equals("OUTER", System.StringComparison.OrdinalIgnoreCase)) continue;
+            if (t.Type is TokenType.Identifier or TokenType.QuotedIdentifier or TokenType.Variable
+                or TokenType.NumberLiteral or TokenType.StringLiteral
+                or TokenType.Keyword or TokenType.DeclareKeyword)
+            {
+                var key = t.Value.ToLowerInvariant();
+                counts[key] = counts.TryGetValue(key, out int n) ? n + 1 : 1;
+            }
+        }
+        return counts;
     }
 
     public string Format(AstNode node, int indent = 0)
@@ -152,10 +204,13 @@ public sealed class FormatterEngine
             if (i > 0) sb.Append(parts[i].blank ? "\n\n" : "\n");
             sb.Append(parts[i].text);
         }
-        // A construct the input cut short is appended exactly as it was written.
+        // A construct the input cut short is appended exactly as it was written. A tail left over
+        // from a statement that was partly formatted already carries the original whitespace that
+        // stood before it, so it needs no separator of its own.
         if (script.UnparsedTail != null)
         {
-            if (parts.Count > 0) sb.Append(script.UnparsedTailBlankBefore ? "\n\n" : "\n");
+            if (parts.Count > 0 && !script.UnparsedTailGlued)
+                sb.Append(script.UnparsedTailBlankBefore ? "\n\n" : "\n");
             sb.Append(script.UnparsedTail.TrimEnd());
         }
         return sb.ToString() + "\n";

@@ -46,6 +46,12 @@ public sealed class ScriptNode : AstNode
     public string? UnparsedTail { get; set; }
     /// <summary>True when a blank line separated the unparsed tail from the previous statement.</summary>
     public bool UnparsedTailBlankBefore { get; set; }
+    /// <summary>
+    /// True when the tail is the leftover of a statement whose earlier part was formatted: it
+    /// starts with the original whitespace (or none) that stood between the two, so it is appended
+    /// as-is — "… from openquery(" keeps the unfinished call on the line it was written on.
+    /// </summary>
+    public bool UnparsedTailGlued { get; set; }
 }
 
 // ─── Statements ──────────────────────────────────────────────────────────────

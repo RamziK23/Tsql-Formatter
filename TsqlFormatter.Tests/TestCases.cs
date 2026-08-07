@@ -903,19 +903,29 @@ public static class TestCases
 
         // ── Unfinished construct at the end of the selection ──────────────────
         new TestCase {
-            Rule = "parse-safety", Name = "statements before a cut-off tail are still formatted",
+            Rule = "parse-safety", Name = "everything but the cut-off remainder is formatted",
             Input    = "create table #process (\nobject_type varchar(255),\nobject_id int\n)\n\ninsert into #process(\nobject_type,\nobject_id\n)\nselect\nobject_type,\nobject_id\nfrom openquery(",
-            Expected = "create table #process (\n\tobject_type varchar(255),\n\tobject_id int\n)\n\ninsert into #process(\nobject_type,\nobject_id\n)\nselect\nobject_type,\nobject_id\nfrom openquery(",
+            Expected = "create table #process (\n\tobject_type varchar(255),\n\tobject_id int\n)\n\ninsert into #process (\n\tobject_type,\n\tobject_id\n)\nselect\n\tobject_type,\n\tobject_id\nfrom openquery(",
         },
         new TestCase {
-            Rule = "parse-safety", Name = "cut-off tail with no blank line before it keeps its single newline",
+            Rule = "parse-safety", Name = "cut-off tail keeps the line it was written on",
             Input    = "select a\nfrom t\nselect b from openquery(",
-            Expected = "select\n\ta\nfrom t\nselect b from openquery(",
+            Expected = "select\n\ta\nfrom t\nselect\n\tb\nfrom openquery(",
         },
         new TestCase {
-            Rule = "parse-safety", Name = "unfinished first statement leaves the whole source untouched",
+            Rule = "parse-safety", Name = "prefix that would swallow text is rejected (dangling where)",
+            Input    = "update t set a = 1 where (x = 1",
+            Expected = "update t set a = 1 where (x = 1",
+        },
+        new TestCase {
+            Rule = "parse-safety", Name = "cut-off tail after a join keeps the normalized prefix",
+            Input    = "select a\nfrom t\n\tleft outer join u on u.id = t.id\nselect b from openquery(",
+            Expected = "select\n\ta\nfrom t\n\tleft join u\n\t\ton u.id = t.id\nselect\n\tb\nfrom openquery(",
+        },
+        new TestCase {
+            Rule = "parse-safety", Name = "unfinished first statement: parsable prefix still formatted",
             Input    = "select b from openquery(",
-            Expected = "select b from openquery(",
+            Expected = "select\n\tb\nfrom openquery(",
         },
 
         // ── Blank line around a comment after a FROM with no WHERE ───────────
