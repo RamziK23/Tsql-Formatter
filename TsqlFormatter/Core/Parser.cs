@@ -1239,24 +1239,36 @@ public sealed class Parser
         if (tok.Type == TokenType.LeftParen)
         {
             Advance();
-            if (Peek().IsKeyword("SELECT"))
+            // Comments right after '(' — "not (  --note" — are not operands: the same-line one
+            // stays on the paren's line, the ones below lead the first condition. Without this
+            // they reached ParsePrimary and aborted the parse of the whole script.
+            string? openComment = TryTakeSameLineInlineComment();
+            if (PeekPastComments().IsKeyword("SELECT"))
             {
                 var sub = ParseSelectOrSet(null);
                 Expect(TokenType.RightParen);
-                return new SubQueryNode { Select = sub };
+                return new SubQueryNode { Select = sub, OpenComment = openComment };
             }
+            var leading = CollectStandaloneComments();
             var inner = ParseExpression();
-            // If a boolean operator follows, this is a condition group: ( a = 1 or b = 2 )
-            if (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+            var innerComment = TryTakeSameLineInlineComment();
+            // A boolean operator makes this a condition group: ( a = 1 or b = 2 ). Comments do
+            // too — the group's layout is the only one that can give them their own line.
+            if (Peek().IsKeyword("AND") || Peek().IsKeyword("OR")
+                || openComment != null || leading.Count > 0 || innerComment != null)
             {
-                var group = new ConditionGroupNode();
-                group.Conditions.Add(new ConditionNode { Expression = inner });
+                var group = new ConditionGroupNode { OpenComment = openComment };
+                group.Conditions.Add(new ConditionNode { Expression = inner, TrailingComment = innerComment }
+                    .Tap(c => c.LeadingComments.AddRange(leading)));
                 while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
                 {
                     string op = Peek().IsKeyword("AND") ? "and" : "or";
                     Advance();
+                    var nextLeading = CollectStandaloneComments();
                     var next = ParseExpression();
-                    group.Conditions.Add(new ConditionNode { LogicalOp = op, Expression = next });
+                    var nextComment = TryTakeSameLineInlineComment();
+                    group.Conditions.Add(new ConditionNode { LogicalOp = op, Expression = next, TrailingComment = nextComment }
+                        .Tap(c => c.LeadingComments.AddRange(nextLeading)));
                 }
                 Expect(TokenType.RightParen);
                 return group;

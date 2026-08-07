@@ -512,13 +512,20 @@ internal static class RuleHelpers
         var t0 = Tabs(indent);
         var t1 = Tabs(indent + 1);
         var sb = new System.Text.StringBuilder();
-        sb.Append("(\n");
+        sb.Append("(");
+        // A comment written on the '(' line stays there.
+        if (cg.OpenComment != null) sb.Append(TrailingCommentSuffix(cg.OpenComment));
+        sb.Append("\n");
         for (int i = 0; i < cg.Conditions.Count; i++)
         {
             if (cg.Conditions[i] is ConditionNode cn)
             {
+                // Standalone comments on their own line(s) above the condition.
+                foreach (var lc in cn.LeadingComments)
+                    sb.Append($"{t1}{lc}\n");
                 string prefix = cn.LogicalOp != null ? $"{cn.LogicalOp} " : "";
-                sb.Append($"{t1}{prefix}{EmitExpr(cn.Expression, engine, indent + 1)}\n");
+                string cmt    = cn.TrailingComment != null ? TrailingCommentSuffix(cn.TrailingComment) : "";
+                sb.Append($"{t1}{prefix}{EmitExpr(cn.Expression, engine, indent + 1)}{cmt}\n");
             }
         }
         sb.Append($"{t0})");

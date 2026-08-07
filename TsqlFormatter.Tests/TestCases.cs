@@ -894,6 +894,28 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── comments inside a parenthesised condition group ──────────────────
+        new TestCase {
+            Rule = "where-or", Name = "comment on the not ( line stays there",
+            Input    = "select a from t where e.cid is null\nand not (  --почему\nw.mm_dz = 1\nand w.status = 2\n)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\te.cid is null\n\tand not (\t\t--почему\n\t\tw.mm_dz = 1\n\t\tand w.status = 2\n\t)",
+        },
+        new TestCase {
+            Rule = "where-or", Name = "a single condition in parens with a comment gets the group layout",
+            Input    = "select a from t where ( --note\na = 1 )",
+            Expected = "select\n\ta\nfrom t\nwhere\n\t(\t\t--note\n\t\ta = 1\n\t)",
+        },
+        new TestCase {
+            Rule = "where-or", Name = "comments above and after conditions inside a group",
+            Input    = "select a from t where not (\n--why\na = 1\nand b = 2 --tail\n)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tnot (\n\t\t--why\n\t\ta = 1\n\t\tand b = 2\t\t--tail\n\t)",
+        },
+        new TestCase {
+            Rule = "where-or", Name = "arithmetic parens stay inline",
+            Input    = "select (1 + 2) * 3 as x from t",
+            Expected = "select\n\t(1 + 2) * 3 as x\nfrom t",
+        },
+
         // ── BEGIN TRY / BEGIN CATCH and @@globals ────────────────────────────
         new TestCase {
             Rule = "atat", Name = "@@TRANCOUNT is one token, not @ plus @TRANCOUNT",

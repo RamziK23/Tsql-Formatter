@@ -224,6 +224,8 @@ public sealed class ParenExprNode : AstNode
 public sealed class ConditionGroupNode : AstNode
 {
     public List<AstNode> Conditions { get; } = new();
+    /// <summary>A comment on the same line as the opening paren: "not (  --note".</summary>
+    public string? OpenComment { get; init; }
 }
 
 /// <summary>An ORDER BY item: expression plus optional ASC/DESC direction.</summary>
