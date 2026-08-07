@@ -373,6 +373,9 @@ public sealed class OrderByFragmentNode : AstNode
 public sealed class BeginEndNode : AstNode
 {
     public List<AstNode> Body { get; } = new List<AstNode>();
+    /// <summary>"try" or "catch" for BEGIN TRY … END TRY / BEGIN CATCH … END CATCH; null for a
+    /// plain BEGIN … END block.</summary>
+    public string? Label { get; init; }
 }
 
 // ─── CREATE TABLE / DROP TABLE ───────────────────────────────────────────────

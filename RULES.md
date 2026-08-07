@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~80 · Тестов: 173/173 · Движок: .NET 5
+- Правил: ~80 · Тестов: 178/178 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -22,7 +22,7 @@ FormatterEngine + Rules), а не план. Бейдж-`id` каждого пр�
 - [I. DECLARE](#i-declare)
 - [J. INSERT / UPDATE / DELETE](#j-insert--update--delete)
 - [K. CREATE TABLE / DROP TABLE](#k-create-table--drop-table)
-- [L. CTE · IF/ELSE · BEGIN/END · UNION](#l-cte--ifelse--beginend--union)
+- [L. CTE · IF/ELSE · TRY/CATCH · BEGIN/END · UNION](#l-cte--ifelse--trycatch--beginend--union)
 - [M. Фрагменты](#m-фрагменты)
 - [N. Как писать тесты](#n-как-писать-тесты)
 
@@ -54,6 +54,20 @@ select @city=N'***', @x=N'it''s ok'
 -- результат
 select @city = N'***',
 	@x = N'it''s ok'
+```
+
+### `atat` — Глобальные переменные `@@…` — один токен
+`@@TRANCOUNT`, `@@ROWCOUNT`, `@@IDENTITY` лексятся целиком, а не как `@` плюс `@TRANCOUNT`
+(раньше из-за этого `if @@TRANCOUNT > 0` разваливалось на `if @` и отдельную строку с `@TRANCOUNT`).
+Регистр сохраняется, как у обычных переменных.
+
+```sql
+-- вход
+if @@TRANCOUNT > 0
+commit transaction
+-- результат
+if @@TRANCOUNT > 0
+commit transaction
 ```
 
 ### `dquote` — Идентификаторы в `[…]` и `"…"` дословно
@@ -996,7 +1010,7 @@ create table #x (
 
 ---
 
-## L. CTE · IF/ELSE · BEGIN/END · UNION
+## L. CTE · IF/ELSE · TRY/CATCH · BEGIN/END · UNION
 
 ### `cte` — WITH … AS ( … )
 
@@ -1069,6 +1083,50 @@ end
 `else` и `end` больше не «поглощаются» телом ветки: `print('1') else print('0')` разбирается
 как две ветки одного `if`, а `begin print('1') end` — как блок с закрывающим `end`
 (`end`, закрывающий `case` внутри оператора, границей не считается).
+
+### `trycatch` — BEGIN TRY / BEGIN CATCH
+`begin try … end try` и `begin catch … end catch` — самостоятельные блоки (раньше `try`/`catch`
+принимались за отдельные операторы внутри обычного `begin … end`, и разметка ломалась). Внутри —
+правило `2.8` (пустая строка после `begin`, тело +1 таб, пустая строка перед `end`), а сам блок
+всегда отделяется пустой строкой от того, что стоит до и после него.
+
+```sql
+-- вход
+begin transaction
+begin try
+delete from p
+where id = 980
+end try
+begin catch
+if @@TRANCOUNT > 0
+rollback transaction
+end catch
+if @@TRANCOUNT > 0
+commit transaction
+-- результат
+begin transaction
+
+begin try
+
+	delete from p
+	where
+		id = 980
+
+end try
+
+begin catch
+
+	if @@TRANCOUNT > 0
+	rollback transaction
+
+end catch
+
+if @@TRANCOUNT > 0
+commit transaction
+```
+
+`begin try`, закрытый просто `end` (без `try`), не форматируется — исходник возвращается без
+изменений (см. `parse-safety`).
 
 ### `2.8` — BEGIN / END: пустая строка после begin и перед end, тело +1 таб
 

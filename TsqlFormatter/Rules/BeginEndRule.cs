@@ -23,8 +23,10 @@ public sealed class BeginEndRule : IFormatterRule
         var b    = (BeginEndNode)node;
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new StringBuilder();
+        // "begin try" … "end try" / "begin catch" … "end catch"; empty for a plain block.
+        var label = b.Label != null ? " " + b.Label : "";
 
-        sb.Append($"{tabs}begin\n");
+        sb.Append($"{tabs}begin{label}\n");
 
         if (b.Body.Count > 0)
         {
@@ -67,7 +69,7 @@ public sealed class BeginEndRule : IFormatterRule
             // The last \n\n already provides the blank line before end
         }
 
-        sb.Append($"{tabs}end");
+        sb.Append($"{tabs}end{label}");
         return sb.ToString();
     }
 

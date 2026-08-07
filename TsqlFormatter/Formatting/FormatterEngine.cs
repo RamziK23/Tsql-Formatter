@@ -114,6 +114,9 @@ public sealed class FormatterEngine
             : text.Substring(0, nl + 1) + text.Substring(nl + 1) + "\t\t" + comment;
     }
 
+    /// <summary>True for a BEGIN TRY / BEGIN CATCH block (a labelled BEGIN … END).</summary>
+    private static bool IsTryCatchBlock(AstNode node) => node is BeginEndNode { Label: not null };
+
     /// <summary>True if the node is a standalone comment (a RawTokensNode of only comment tokens).</summary>
     private static bool IsCommentOnly(AstNode node)
     {
@@ -131,6 +134,7 @@ public sealed class FormatterEngine
         var parts = new List<(string text, bool blank)>();
         bool isFirst = true;
         bool prevWasGo = false;
+        bool prevWasTryCatch = false;
         string? pendingComment = null;  // a standalone comment awaiting the next statement
         string pendingSep = "\n";       // separator between the pending comment and next statement
         bool pendingBlank = false;      // blank line before the pending comment block
@@ -185,6 +189,9 @@ public sealed class FormatterEngine
 
             // GO batch separators always sit on their own blank-line-separated line.
             if (prevWasGo || stmt is GoSeparatorNode) blankBefore = true;
+            // A TRY / CATCH block stands apart from what surrounds it — "begin transaction" above
+            // it and the "if @@trancount" below it each get their own blank line.
+            if (prevWasTryCatch || IsTryCatchBlock(stmt)) blankBefore = true;
 
             // Restore leading semicolon before the first statement (e.g. ;with ...)
             if (isFirst && script.HasLeadingSemicolon)
@@ -193,6 +200,7 @@ public sealed class FormatterEngine
             parts.Add((formatted, blankBefore));
             isFirst = false;
             prevWasGo = stmt is GoSeparatorNode;
+            prevWasTryCatch = IsTryCatchBlock(stmt);
         }
 
         // A trailing comment with no following statement stands on its own.

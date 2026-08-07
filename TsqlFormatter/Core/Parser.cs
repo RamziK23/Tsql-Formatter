@@ -466,6 +466,9 @@ public sealed class Parser
             return ParseTransactionStatement();
         if (tok.IsKeyword("COMMIT") || tok.IsKeyword("ROLLBACK"))
             return ParseTransactionStatement();
+        // BEGIN TRY / BEGIN CATCH are blocks of their own, closed by END TRY / END CATCH.
+        if (tok.IsKeyword("BEGIN") && (PeekAt(1).IsKeyword("TRY") || PeekAt(1).IsKeyword("CATCH")))
+            return ParseBeginEnd(PeekAt(1).Value.ToLowerInvariant());
         if (tok.IsKeyword("BEGIN"))                return ParseBeginEnd();
         if (tok.IsKeyword("CREATE"))               return ParseCreate();
         if (tok.IsKeyword("DROP"))                 return ParseDrop();
@@ -1640,10 +1643,13 @@ public sealed class Parser
     //  BEGIN / END  (rule 2.8)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    private BeginEndNode ParseBeginEnd()
+    /// <param name="label">"try" or "catch" for BEGIN TRY / BEGIN CATCH, which are closed by
+    /// END TRY / END CATCH; null for a plain BEGIN … END block.</param>
+    private BeginEndNode ParseBeginEnd(string? label = null)
     {
         Advance(); // BEGIN
-        var node = new BeginEndNode();
+        if (label != null) Advance(); // TRY / CATCH
+        var node = new BeginEndNode { Label = label };
         while (!IsAtEnd() && !Peek().IsKeyword("END"))
         {
             int before = _pos;
@@ -1664,6 +1670,12 @@ public sealed class Parser
         if (!Peek().IsKeyword("END"))
             throw new ParseException($"BEGIN block has no matching END (unexpected [{Peek().Type}] '{Peek().Value}').");
         Advance(); // END
+        if (label != null)
+        {
+            if (!Peek().IsKeyword(label))
+                throw new ParseException($"BEGIN {label} block is closed by END without '{label}'.");
+            Advance(); // TRY / CATCH
+        }
         return node;
     }
 

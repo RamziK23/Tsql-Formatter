@@ -117,8 +117,11 @@ public sealed class Lexer
     {
         int sl = _line, sc = _col;
         Advance();
+        // A second '@' makes it a built-in global: @@TRANCOUNT, @@ROWCOUNT, @@IDENTITY. It is one
+        // token — split in two, "@@TRANCOUNT" came out as "@" plus a separate variable.
+        string prefix = Peek(0) == '@' ? "@" + Advance() : "@";
         string name = ReadWhile(c => char.IsLetterOrDigit(c) || c == '_');
-        return new Token(TokenType.Variable, "@" + name, sl, sc);
+        return new Token(TokenType.Variable, prefix + name, sl, sc);
     }
 
     private Token ReadStringLiteral(bool unicodePrefix = false)

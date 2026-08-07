@@ -894,6 +894,33 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── BEGIN TRY / BEGIN CATCH and @@globals ────────────────────────────
+        new TestCase {
+            Rule = "atat", Name = "@@TRANCOUNT is one token, not @ plus @TRANCOUNT",
+            Input    = "if @@TRANCOUNT > 0\ncommit transaction",
+            Expected = "if @@TRANCOUNT > 0\ncommit transaction",
+        },
+        new TestCase {
+            Rule = "atat", Name = "@@ROWCOUNT as a select column keeps its case",
+            Input    = "select @@ROWCOUNT as x, @a from t",
+            Expected = "select\n\t@@ROWCOUNT as x,\n\t@a\nfrom t",
+        },
+        new TestCase {
+            Rule = "trycatch", Name = "try/catch blocks, blank line around each",
+            Input    = "begin transaction\nbegin try\ndelete from p\nwhere id = 980\nend try\nbegin catch\nif @@TRANCOUNT > 0\nrollback transaction\nend catch\nif @@TRANCOUNT > 0\ncommit transaction",
+            Expected = "begin transaction\n\nbegin try\n\n\tdelete from p\n\twhere\n\t\tid = 980\n\nend try\n\nbegin catch\n\n\tif @@TRANCOUNT > 0\n\trollback transaction\n\nend catch\n\nif @@TRANCOUNT > 0\ncommit transaction",
+        },
+        new TestCase {
+            Rule = "trycatch", Name = "try/catch nested in a begin/end block",
+            Input    = "begin\nbegin try\nselect 1\nend try\nbegin catch\nthrow\nend catch\nend",
+            Expected = "begin\n\n\tbegin try\n\n\t\tselect\n\t\t\t1\n\n\tend try\n\n\tbegin catch\n\n\t\tthrow\n\n\tend catch\n\nend",
+        },
+        new TestCase {
+            Rule = "trycatch", Name = "begin try closed by a plain end is left alone",
+            Input    = "begin try\nselect 1\nend",
+            Expected = "begin try\nselect 1\nend",
+        },
+
         // ── comments inside GROUP BY / ORDER BY lists ────────────────────────
         new TestCase {
             Rule = "linecmt", Name = "-- comment on its own line inside group by",
