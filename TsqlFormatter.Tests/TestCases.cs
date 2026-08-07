@@ -894,6 +894,23 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── a comment in a place no rule can lay out is hoisted, never lost ──
+        new TestCase {
+            Rule = "cmt-safety", Name = "comment inside a dotted name does not mangle it",
+            Input    = "select Id from dbo.--note\nUsers where Status = 1",
+            Expected = "--note\nselect\n\tId\nfrom dbo.Users\nwhere\n\tStatus = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "comment where an operand is expected",
+            Input    = "select a from t where x = --note\n1",
+            Expected = "--note\nselect\n\ta\nfrom t\nwhere\n\tx = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "comment that would end up in front of the rest of a condition",
+            Input    = "select a from t where Status --note\n= 1",
+            Expected = "--note\nselect\n\ta\nfrom t\nwhere\n\tStatus = 1",
+        },
+
         // ── comments inside a parenthesised condition group ──────────────────
         new TestCase {
             Rule = "where-or", Name = "comment on the not ( line stays there",

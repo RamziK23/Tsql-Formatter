@@ -29,7 +29,10 @@ public sealed class FormatterEngine
             // Attempt fragment parse on a fresh token stream.
             var fragment = new Parser(new Lexer(source).Tokenize()).ParseFragment();
             if (fragment != null)
-                return engine.Format(fragment).TrimEnd() + "\n";
+            {
+                var frag = engine.Format(fragment).TrimEnd() + "\n";
+                return IsFaithful(source, frag) ? frag : source;
+            }
 
             // Fall back to full-statement parsing.
             var script = new Parser(new Lexer(source).Tokenize()).Parse();
@@ -39,11 +42,20 @@ public sealed class FormatterEngine
             // and a prefix can end on a clause the emitter drops when it is empty (a dangling
             // "where", say). Verify that nothing from the source went missing; if something did,
             // re-format leaving that whole statement verbatim.
-            if (script.UnparsedTailGlued && !KeepsEveryToken(source, text))
+            if (script.UnparsedTailGlued && !IsFaithful(source, text))
                 text = engine.FormatScript(
                     new Parser(new Lexer(source).Tokenize()).Parse(recoverPartialStatement: false));
 
-            return text;
+            // Last gate: a comment in an unusual place must never cost text. If the output lost a
+            // token or a comment, or let a -- comment swallow code that followed it, retry with
+            // every comment hoisted above its statement — a coarser but always-safe placement.
+            // If even that is not faithful, the source comes back untouched, the same graceful
+            // degradation as a parse failure.
+            if (IsFaithful(source, text)) return text;
+
+            var hoisted = engine.FormatScript(
+                new Parser(new Lexer(source).Tokenize(), hoistComments: true).Parse());
+            return IsFaithful(source, hoisted) ? hoisted : source;
         }
         catch (ParseException)
         {
@@ -51,6 +63,69 @@ public sealed class FormatterEngine
             // rather than emit desynchronized/broken SQL.
             return source;
         }
+    }
+
+    /// <summary>
+    /// True when <paramref name="result"/> still says everything <paramref name="source"/> said:
+    /// no token and no comment went missing, and no -- comment ended up with code after it on the
+    /// same line (which would comment that code out). Formatting is free to move things around;
+    /// it is never free to lose them or to hide them behind a comment.
+    /// </summary>
+    private static bool IsFaithful(string source, string result) =>
+        KeepsEveryToken(source, result)
+        && KeepsEveryComment(source, result)
+        && NothingHidesBehindLineComment(result);
+
+    /// <summary>True when every comment of the source appears in the result, verbatim.</summary>
+    private static bool KeepsEveryComment(string source, string result)
+    {
+        try
+        {
+            var have = CommentCounts(result);
+            foreach (var kv in CommentCounts(source))
+            {
+                have.TryGetValue(kv.Key, out int n);
+                if (n < kv.Value) return false;
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private static Dictionary<string, int> CommentCounts(string text)
+    {
+        var counts = new Dictionary<string, int>();
+        foreach (var t in new Lexer(text).Tokenize())
+        {
+            if (t.Type is not (TokenType.LineComment or TokenType.BlockComment)) continue;
+            var key = t.Value.TrimEnd();
+            counts[key] = counts.TryGetValue(key, out int n) ? n + 1 : 1;
+        }
+        return counts;
+    }
+
+    /// <summary>
+    /// True when nothing follows a -- comment on its own line: everything after one, up to the
+    /// newline, is commented out, so code placed there would be silently disabled.
+    /// </summary>
+    private static bool NothingHidesBehindLineComment(string text)
+    {
+        try
+        {
+            var tokens = new Lexer(text).Tokenize();
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                if (tokens[i].Type != TokenType.LineComment) continue;
+                for (int j = i + 1; j < tokens.Count; j++)
+                {
+                    if (tokens[j].Type == TokenType.Whitespace) continue;
+                    if (tokens[j].Type is TokenType.Newline or TokenType.EndOfFile) break;
+                    return false;   // code (or another comment) trails the -- comment
+                }
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     /// <summary>
@@ -99,7 +174,17 @@ public sealed class FormatterEngine
     {
         foreach (var rule in _rules)
             if (rule.CanHandle(node))
-                return rule.Format(node, this, indent);
+            {
+                var text = rule.Format(node, this, indent);
+                // Comments the parser could not place inside the statement are printed above it,
+                // each on its own line at the statement's indent.
+                if (node.HoistedComments.Count > 0)
+                {
+                    var tabs = new string('\t', indent);
+                    text = string.Concat(node.HoistedComments.Select(c => $"{tabs}{c}\n")) + text;
+                }
+                return text;
+            }
 
         return $"/* unhandled: {node.GetType().Name} */";
     }

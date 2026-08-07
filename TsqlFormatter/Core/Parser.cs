@@ -20,7 +20,15 @@ public sealed class Parser
         TokenType.Whitespace, TokenType.Newline
     };
 
-    public Parser(List<Token> tokens) { _tokens = tokens; }
+    /// <param name="hoistComments">
+    /// Safe mode: never attach a comment to the end of a line — park every comment for hoisting
+    /// above the statement instead. Used as a retry when the normal layout would have lost a
+    /// comment or hidden code behind one; the placement is coarser, but the script still formats.
+    /// </param>
+    public Parser(List<Token> tokens, bool hoistComments = false)
+    { _tokens = tokens; _hoistComments = hoistComments; }
+
+    private readonly bool _hoistComments;
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  Script
@@ -114,6 +122,8 @@ public sealed class Parser
             if (_pos == beforeStmt) { AdvanceRaw(); continue; }
             if (stmt != null)
             {
+                // Comments parked while parsing an expression ride above this statement.
+                stmt.HoistedComments.AddRange(DrainPendingComments());
                 if (hadSemicolon && nextIsWith && script.Statements.Count > 0)
                     stmt.LeadingSemicolon = true;
                 // Preserve a blank line that existed before this statement in the source.
@@ -281,7 +291,8 @@ public sealed class Parser
         // Object name (dotted, may be [quoted]).
         var name = new System.Text.StringBuilder();
         name.Append(Advance().Value);
-        while (PeekIs(TokenType.Dot)) { name.Append(Advance().Value); name.Append(Advance().Value); }
+        while (PeekPastComments().Type == TokenType.Dot)
+        { ParkComment(); name.Append(Advance().Value); ParkComment(); name.Append(Advance().Value); }
 
         var pars = new List<ParamNode>();
         bool hasParens = false;
@@ -652,7 +663,8 @@ public sealed class Parser
             Advance();
             var nameSb = new System.Text.StringBuilder();
             nameSb.Append(Advance().Value);
-            while (PeekIs(TokenType.Dot)) { nameSb.Append(Advance().Value); nameSb.Append(Advance().Value); }
+            while (PeekPastComments().Type == TokenType.Dot)
+            { ParkComment(); nameSb.Append(Advance().Value); ParkComment(); nameSb.Append(Advance().Value); }
             node.IntoTable = nameSb.ToString();
         }
         if (Peek().IsKeyword("FROM"))
@@ -987,7 +999,8 @@ public sealed class Parser
 
         var nameParts = new List<Token>();
         nameParts.Add(Advance());
-        while (PeekIs(TokenType.Dot)) { nameParts.Add(Advance()); nameParts.Add(Advance()); }
+        while (PeekPastComments().Type == TokenType.Dot)
+        { ParkComment(); nameParts.Add(Advance()); ParkComment(); nameParts.Add(Advance()); }
 
         // Function-valued table source: name(arg1, arg2, ...) — e.g. openjson(col) or STRING_SPLIT(col, ',').
         // Suppressed for INSERT targets, where a following '(' is always the column list.
@@ -1302,7 +1315,8 @@ public sealed class Parser
         {
             var col = new ColumnRefNode();
             col.Parts.Add(Advance());
-            while (PeekIs(TokenType.Dot)) { col.Parts.Add(Advance()); col.Parts.Add(Advance()); }
+            while (PeekPastComments().Type == TokenType.Dot)
+            { ParkComment(); col.Parts.Add(Advance()); ParkComment(); col.Parts.Add(Advance()); }
             // Dotted / quoted function call: schema.fn(args), [db].[schema].[fn](args).
             // (A single-part name followed by '(' was already handled as a function above.)
             if (PeekIs(TokenType.LeftParen) && tok.Type != TokenType.Variable)
@@ -1333,13 +1347,16 @@ public sealed class Parser
         // Literals
         if (tok.Type is TokenType.StringLiteral or TokenType.NumberLiteral)
         { var lit = new LiteralNode { Token = Advance() }; lit.TrailingComment = TryTakeSameLineComment(); return lit; }
-        if (tok.Type == TokenType.BlockComment) return new LiteralNode { Token = Advance() };
-
-        // A -- line comment is never an operand: turning it into a "value" would swallow the
-        // rest of the line (real columns/conditions). Signal a parse error so the caller can
-        // recover (callers that expect leading comments capture them before reaching here).
-        if (tok.Type == TokenType.LineComment)
-            throw new ParseException($"Line comment cannot be an expression at line {tok.Line}, col {tok.Column}: '{tok.Value}'.");
+        // A comment is never an operand: a -- comment turned into a "value" would swallow the rest
+        // of the line (real columns/conditions). Callers that can place a comment nicely capture it
+        // before reaching here; anything left over is parked and lifted to the statement, so an
+        // annotation in an odd spot moves a line up instead of costing the whole script its
+        // formatting. Parsing then continues with the operand that follows.
+        if (tok.Type is TokenType.LineComment or TokenType.BlockComment)
+        {
+            _pendingComments.Add(Advance().Value);
+            return ParsePrimary();
+        }
 
         // Wildcard SELECT *
         if (tok.Type == TokenType.Multiply)
@@ -1668,6 +1685,7 @@ public sealed class Parser
             var stmt = ParseStatement();
             if (stmt != null)
             {
+                stmt.HoistedComments.AddRange(DrainPendingComments());
                 // Keep a same-line trailing comment attached to this statement's last line.
                 var trailing = TryTakeSameLineComment();
                 if (trailing != null) stmt.StatementTrailingComment = trailing;
@@ -2061,6 +2079,7 @@ public sealed class Parser
         {
             var val = _tokens[i].Value;
             _pos = i + 1;
+            if (_hoistComments) { _pendingComments.Add(val); return null; }
             return val;
         }
         return null;
@@ -2079,6 +2098,7 @@ public sealed class Parser
         {
             var val = _tokens[i].Value;
             _pos = i + 1;
+            if (_hoistComments) { _pendingComments.Add(val); return null; }
             return val;
         }
         return null;
@@ -2139,6 +2159,17 @@ public sealed class Parser
         var copy = new List<string>(_pendingComments);
         _pendingComments.Clear();
         return copy;
+    }
+
+    /// <summary>
+    /// Consumes comments standing inside a dotted name ("dbo. --note \n Users") and parks them for
+    /// hoisting above the statement. A comment is never part of a name: taken as one it both
+    /// mangled the name and commented out whatever followed it on that line.
+    /// </summary>
+    private void ParkComment()
+    {
+        while (PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
+            _pendingComments.Add(Advance().Value);
     }
 
     private bool TryConsume(TokenType type) { if (Peek().Type != type) return false; Advance(); return true; }

@@ -162,12 +162,94 @@ public static class TestRunner
         string tokColor = tokFailed == 0 ? Green : Red;
         Console.WriteLine($"{tokColor}identifier preservation: {tokChecked - tokFailed}/{tokChecked} intact{Reset}");
 
+        // ── Comment robustness: a comment between ANY two tokens must stay harmless ──
+        // T-SQL allows a comment anywhere between two tokens, and the parser cannot be taught
+        // every one of those places by hand — so every test input is re-run with a comment
+        // injected at each token boundary. What must never happen: text disappearing, a comment
+        // disappearing, or a -- comment ending up with code behind it (which comments it out).
+        // Injections the formatter cannot lay out come back unchanged, which is safe; their
+        // count is reported so the gap stays visible.
+        int injected = 0, unsafeCount = 0, unformatted = 0, unstable = 0;
+        var unsafeFailures = new List<(string name, string input, string output)>();
+        foreach (var tc in cases)
+        {
+            string baseOut;
+            try { baseOut = Format(tc.Input); } catch { continue; }
+            bool baseFormats = Normalize(baseOut) != Normalize(tc.Input);
+            var toks = new Lexer(tc.Input).Tokenize()
+                .Where(t => t.Type != TokenType.EndOfFile).ToList();
+
+            for (int i = 0; i <= toks.Count; i++)
+            {
+                if (i < toks.Count && toks[i].Type is TokenType.Whitespace or TokenType.Newline) continue;
+                foreach (var injection in new[] { "--INJECTED\n", "/*INJECTED*/ " })
+                {
+                    var sb = new StringBuilder();
+                    for (int j = 0; j < toks.Count; j++) { if (j == i) sb.Append(injection); sb.Append(toks[j].Value); }
+                    if (i == toks.Count) sb.Append(injection);
+                    string input = sb.ToString();
+                    injected++;
+
+                    string outp;
+                    try { outp = Format(input); }
+                    catch (Exception ex)
+                    {
+                        unsafeCount++;
+                        unsafeFailures.Add(($"{tc.Rule} / {tc.Name} (threw {ex.GetType().Name})", input, ex.Message));
+                        continue;
+                    }
+
+                    bool unchanged = Normalize(outp) == Normalize(input);
+                    if (!outp.Contains("INJECTED")
+                        || !SameMultiset(IdentifierMultiset(input), IdentifierMultiset(outp), out _) && !unchanged
+                        || HidesCodeBehindLineComment(outp))
+                    {
+                        unsafeCount++;
+                        unsafeFailures.Add(($"{tc.Rule} / {tc.Name}", input, outp));
+                        continue;
+                    }
+                    if (baseFormats && unchanged) { unformatted++; continue; }
+                    string again;
+                    try { again = Format(outp); } catch { again = ""; }
+                    if (Normalize(again) != Normalize(outp)) unstable++;
+                }
+            }
+        }
+        if (unsafeCount > 0)
+        {
+            Console.WriteLine($"\n{Yellow}═══ COMMENT-ROBUSTNESS FAILURES ═══{Reset}");
+            foreach (var (name, input, output) in unsafeFailures.Take(10))
+                Console.WriteLine($"{Red}● {name}{Reset}\n  in:  {input.Replace("\n", "⏎")}\n  out: {output.Replace("\n", "⏎")}");
+            if (unsafeFailures.Count > 10) Console.WriteLine($"{Dim}  … and {unsafeFailures.Count - 10} more{Reset}");
+        }
+        string fuzzColor = unsafeCount == 0 ? Green : Red;
+        Console.WriteLine($"{fuzzColor}comment robustness: {injected - unsafeCount}/{injected} safe{Reset}"
+                        + $"{Dim} ({unformatted} left unformatted, {unstable} unstable){Reset}");
+
         // ── Summary ───────────────────────────────────────────────────────────
         int total = passed + failed;
-        bool ok = failed == 0 && idemFailed == 0 && tokFailed == 0;
+        bool ok = failed == 0 && idemFailed == 0 && tokFailed == 0 && unsafeCount == 0;
         string color = ok ? Green : Red;
         Console.WriteLine($"\n{color}═══ {passed}/{total} passed, {failed} failed ═══{Reset}\n");
         return ok ? 0 : 1;
+    }
+
+    /// <summary>True when a -- comment has code (or another comment) after it on the same line,
+    /// i.e. formatting moved something behind a comment and silently disabled it.</summary>
+    static bool HidesCodeBehindLineComment(string sql)
+    {
+        var tokens = new Lexer(sql).Tokenize();
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            if (tokens[i].Type != TokenType.LineComment) continue;
+            for (int j = i + 1; j < tokens.Count; j++)
+            {
+                if (tokens[j].Type == TokenType.Whitespace) continue;
+                if (tokens[j].Type is TokenType.Newline or TokenType.EndOfFile) break;
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Multiset (value → count) of identifier-like tokens in a SQL string:

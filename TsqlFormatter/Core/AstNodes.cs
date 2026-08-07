@@ -16,6 +16,13 @@ public abstract class AstNode
     public string? StatementTrailingComment { get; set; }
 
     /// <summary>
+    /// Comments that turned up where an operand was expected ("where x = --note\n 1"). No
+    /// expression can hold them, so they are lifted to the statement and rendered on their own
+    /// line(s) above it — moved, but never lost, and never left where they would comment out code.
+    /// </summary>
+    public List<string> HoistedComments { get; } = new();
+
+    /// <summary>
     /// True when the source had a blank line (2+ newlines) before this statement.
     /// FormatScript uses it to preserve the original blank-line structure between
     /// statements instead of always forcing one.
