@@ -107,7 +107,8 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"\n{tabs}group by");
             for (int gi = 0; gi < sel.GroupByColumns.Count; gi++)
             {
-                sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(sel.GroupByColumns[gi], engine, indent + 1)}");
+                var (lineLead, blockLead, item) = SplitItemComments(sel.GroupByColumns[gi], $"{tabs}\t");
+                sb.Append($"\n{lineLead}{tabs}\t{blockLead}{RuleHelpers.EmitExpr(item, engine, indent + 1)}");
                 if (gi < sel.GroupByColumns.Count - 1) sb.Append(",");
             }
         }
@@ -127,7 +128,8 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"\n{tabs}order by");
             for (int oi = 0; oi < sel.OrderByColumns.Count; oi++)
             {
-                sb.Append($"\n{tabs}\t{RuleHelpers.EmitExpr(sel.OrderByColumns[oi], engine, indent + 1)}");
+                var (lineLead, blockLead, item) = SplitItemComments(sel.OrderByColumns[oi], $"{tabs}\t");
+                sb.Append($"\n{lineLead}{tabs}\t{blockLead}{RuleHelpers.EmitExpr(item, engine, indent + 1)}");
                 if (oi < sel.OrderByColumns.Count - 1) sb.Append(",");
             }
         }
@@ -137,6 +139,19 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"\n{tabs}option({RuleHelpers.EmitRawTokens(sel.OptionTokens)})");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Peels the comments off a GROUP BY / ORDER BY item: -- comments render on their own line(s)
+    /// above it (prefixed by <paramref name="linePrefix"/>), /* */ comments glue inline in front of
+    /// the expression — the same layout the select column list uses.
+    /// </summary>
+    private static (string lineLead, string blockLead, AstNode item) SplitItemComments(
+        AstNode item, string linePrefix)
+    {
+        if (item is not ListItemNode li) return ("", "", item);
+        var (lineLead, blockLead) = RuleHelpers.SplitLeadingComments(li.LeadingComments, linePrefix);
+        return (lineLead, blockLead, li.Expression);
     }
 
     /// <summary>

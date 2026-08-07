@@ -39,6 +39,8 @@ public sealed class InsertRule : IFormatterRule
                 sb.Append("\n");
             }
             sb.Append($"{tabs})");
+            if (ins.ColumnsComment != null)
+                sb.Append(RuleHelpers.TrailingCommentSuffix(ins.ColumnsComment));
         }
 
         if (ins.Source is ValuesNode vn)

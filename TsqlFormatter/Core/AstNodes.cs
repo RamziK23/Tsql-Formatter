@@ -115,6 +115,8 @@ public sealed class InsertNode : AstNode
     public List<AstNode> Columns { get; } = new();
     /// <summary>Either ValuesNode or SelectStatementNode / SetOperationNode.</summary>
     public AstNode? Source { get; init; }
+    /// <summary>A -- comment on the closing paren's line: "insert into t (…)  -- note".</summary>
+    public string? ColumnsComment { get; set; }
 }
 
 public sealed class ValuesNode : AstNode
@@ -403,6 +405,16 @@ public sealed class DropTableNode : AstNode
 ///   44199, 431064, 9730,  --УТВ
 ///   /*ктв*/44199, 431064
 /// </summary>
+/// <summary>
+/// A GROUP BY / ORDER BY item together with the standalone comments written above it. A -- comment
+/// on its own line is not an expression, so without this it aborted the parse of the whole script.
+/// </summary>
+public sealed class ListItemNode : AstNode
+{
+    public AstNode Expression { get; init; } = null!;
+    public List<string> LeadingComments { get; } = new();
+}
+
 public sealed class InValueGroupNode : AstNode
 {
     public List<AstNode> Values { get; } = new List<AstNode>();

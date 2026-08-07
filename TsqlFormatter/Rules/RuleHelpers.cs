@@ -64,6 +64,9 @@ internal static class RuleHelpers
             ParenExprNode p => $"({EmitExpr(p.Inner, engine, indent)})",
             ConditionGroupNode cg => EmitConditionGroup(cg, engine, indent),
             OrderByItemNode ob => EmitExpr(ob.Expression, engine, indent) + (ob.Direction != null ? " " + ob.Direction : ""),
+            // A list item's own comments are rendered by the clause emitter (they need the
+            // clause's indent); reached from elsewhere, only the expression matters.
+            ListItemNode li => EmitExpr(li.Expression, engine, indent),
             InExprNode    i => EmitIn(i, engine, indent),
             BetweenExprNode bt => EmitBetween(bt, engine, indent),
             LikeExprNode  lk => EmitLike(lk, engine, indent),

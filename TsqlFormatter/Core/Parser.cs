@@ -746,6 +746,14 @@ public sealed class Parser
             }
         }
 
+        // A comment right after the column list ("… )  -- note") must not hide the VALUES/SELECT
+        // that follows, or the source becomes a separate statement and the blank line the source
+        // had between them is preserved as if they were two. The same-line comment stays on the
+        // ')' line; comments on their own line are left for the SELECT to carry.
+        string? columnsComment = null;
+        if (PeekPastComments().IsKeyword("VALUES") || PeekPastComments().IsKeyword("SELECT"))
+            columnsComment = TryTakeSameLineComment();
+
         AstNode? source = null;
         if (Peek().IsKeyword("VALUES"))
         {
@@ -763,7 +771,8 @@ public sealed class Parser
             Expect(TokenType.RightParen);
         }
 
-        return new InsertNode { Table = table, Source = source }.Tap(n => n.Columns.AddRange(columns));
+        return new InsertNode { Table = table, Source = source, ColumnsComment = columnsComment }
+            .Tap(n => n.Columns.AddRange(columns));
     }
 
     private ValuesNode ParseValues()
@@ -1574,12 +1583,13 @@ public sealed class Parser
         var list = new List<AstNode>();
         while (!IsAtEnd() && !IsSelectClauseKeyword())
         {
+            if (!TryTakeItemLeadingComments(out var leading)) break;
             var expr = ParseExpression();
             if (Peek().IsKeyword("ASC") || Peek().IsKeyword("DESC")) Advance();
             // A /* */ block comment on the same line stays glued to the item (transparent),
             // instead of migrating to its own line as a standalone comment.
             GlueSameLineBlockComments(expr);
-            list.Add(expr);
+            list.Add(WithLeadingComments(expr, leading));
             if (PeekIs(TokenType.Comma)) { Advance(); continue; } break;
         }
         return list;
@@ -1591,15 +1601,39 @@ public sealed class Parser
         var list = new List<AstNode>();
         while (!IsAtEnd() && !IsSelectClauseKeyword())
         {
+            if (!TryTakeItemLeadingComments(out var leading)) break;
             var expr = ParseExpression();
             string? dir = null;
             if (Peek().IsKeyword("ASC"))  { Advance(); dir = "asc";  }
             else if (Peek().IsKeyword("DESC")) { Advance(); dir = "desc"; }
-            list.Add(new OrderByItemNode { Expression = expr, Direction = dir });
+            list.Add(WithLeadingComments(new OrderByItemNode { Expression = expr, Direction = dir }, leading));
             if (PeekIs(TokenType.Comma)) { Advance(); continue; } break;
         }
         return list;
     }
+
+    /// <summary>
+    /// Consumes the standalone comments that precede the next GROUP BY / ORDER BY item. Returns
+    /// false (having consumed nothing) when the comments are not followed by an item at all — they
+    /// belong to whatever ends the list, not to this one.
+    /// </summary>
+    private bool TryTakeItemLeadingComments(out List<string> leading)
+    {
+        int before = _pos;
+        leading = CollectStandaloneComments();
+        if (leading.Count > 0 && (IsAtEnd() || IsSelectClauseKeyword()))
+        {
+            _pos = before;
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Wraps a list item in a ListItemNode when it carries comments above it.</summary>
+    private static AstNode WithLeadingComments(AstNode item, List<string> leading) =>
+        leading.Count == 0
+            ? item
+            : new ListItemNode { Expression = item }.Tap(n => n.LeadingComments.AddRange(leading));
 
 
     // ═══════════════════════════════════════════════════════════════════════════

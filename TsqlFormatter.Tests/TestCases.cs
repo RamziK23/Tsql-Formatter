@@ -879,6 +879,28 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\n\n\tselect\n\t\t1\n\nelse\n\n\tselect\n\t\t0",
         },
+        // ── comments inside GROUP BY / ORDER BY lists ────────────────────────
+        new TestCase {
+            Rule = "linecmt", Name = "-- comment on its own line inside group by",
+            Input    = "select a, b from t group by a,\n--note\nb",
+            Expected = "select\n\ta,\n\tb\nfrom t\ngroup by\n\ta,\n\t--note\n\tb",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "-- comment on its own line inside order by",
+            Input    = "select a from t order by a,\n--note\nb",
+            Expected = "select\n\ta\nfrom t\norder by\n\ta,\n\t--note\n\tb",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment before a group by item glues inline",
+            Input    = "select a, b from t group by a, /*x*/ b",
+            Expected = "select\n\ta,\n\tb\nfrom t\ngroup by\n\ta,\n\t/*x*/ b",
+        },
+        new TestCase {
+            Rule = "2.12", Name = "comment after the insert column list does not split the statement",
+            Input    = "insert into t (\na,\nb\n)\t\t-- note\n\nselect x, y from s",
+            Expected = "insert into t (\n\ta,\n\tb\n)\t\t-- note\nselect\n\tx,\n\ty\nfrom s",
+        },
+
         // ── /* */ comments inside an IN list keep their position ─────────────
         new TestCase {
             Rule = "blockcmt", Name = "block comment before the first IN value is kept",
