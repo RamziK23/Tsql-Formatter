@@ -224,7 +224,9 @@ internal static class RuleHelpers
         // A comment on the same line as '(' stays on that line (trailing the open paren).
         var open = sq.OpenComment != null ? TrailingCommentSuffix(sq.OpenComment) : "";
         var inner = engine.Format(sq.Select, indent + 1);
-        return $"({open}\n{inner}\n{Tabs(indent)})";
+        // Comments written just before the ')' stay at the bottom of the subquery.
+        var close = string.Concat(sq.CloseComments.Select(c => $"{Tabs(indent + 1)}{c}\n"));
+        return $"({open}\n{inner}\n{close}{Tabs(indent)})";
     }
 
     private static string EmitFunction(FunctionCallNode fn, FormatterEngine engine, int indent)

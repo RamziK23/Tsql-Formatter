@@ -914,6 +914,23 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── leading-comma lists and comments at the bottom of a subquery ─────
+        new TestCase {
+            Rule = "linecmt", Name = "comment before the separating comma keeps the column list going",
+            Input    = "select\na\n--note\n,b\n,c\nfrom t",
+            Expected = "select\n\ta,\n\t--note\n\tb,\n\tc\nfrom t",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "commented-out column between leading-comma columns",
+            Input    = "select a\n-- ,old_col\n,b\nfrom t\nwhere x = 1",
+            Expected = "select\n\ta,\n\t-- ,old_col\n\tb\nfrom t\nwhere\n\tx = 1",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "comment before a subquery's closing paren stays inside it",
+            Input    = "select q.a\nfrom (\nselect a from #t\n--where a = 1\n) as q\nleft join #u as u\non u.a = q.a",
+            Expected = "select\n\tq.a\nfrom (\n\tselect\n\t\ta\n\tfrom #t\n\t--where a = 1\n) as q\n\tleft join #u as u\n\t\ton u.a = q.a",
+        },
+
         // ── a comment in a place no rule can lay out is hoisted, never lost ──
         new TestCase {
             Rule = "cmt-safety", Name = "comment inside a dotted name does not mangle it",

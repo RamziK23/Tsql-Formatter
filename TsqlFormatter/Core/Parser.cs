@@ -915,6 +915,8 @@ public sealed class Parser
     private List<SelectColumnNode> ParseSelectColumns()
     {
         var cols = new List<SelectColumnNode>();
+        // Comments that stood before the separating comma wait here for the column they annotate.
+        var carriedComments = new List<string>();
         while (!IsAtEnd() && !IsSelectClauseKeyword())
         {
             if (PeekIs(TokenType.Comma)) { Advance(); continue; }
@@ -931,9 +933,22 @@ public sealed class Parser
             // comments standing on their own line (-- , rendered above the column). Capturing
             // line comments here keeps them out of ParsePrimary, where they would otherwise be
             // mis-parsed as an expression/alias.
-            var leadingComments = new List<string>();
+            var leadingComments = new List<string>(carriedComments);
+            carriedComments.Clear();
             while (PeekIs(TokenType.BlockComment) || PeekIs(TokenType.LineComment))
                 leadingComments.Add(Advance().Value);
+
+            // Leading-comma style puts the separator after the comment:
+            //   col1
+            //   --note
+            //   , col2
+            // The comment belongs to col2, so carry it over and take the comma now.
+            if (PeekIs(TokenType.Comma))
+            {
+                Advance();
+                carriedComments.AddRange(leadingComments);
+                continue;
+            }
 
             // Rule: detect T-SQL assignment alias: [Alias] = expression
             // Pattern: simple identifier/quoted-identifier immediately followed by =
@@ -974,9 +989,12 @@ public sealed class Parser
                 .Tap(c => c.LeadingComments.AddRange(leadingComments)));
             // Columns are comma-separated: with no comma, the next token can't start another
             // column — it's the next statement ("select 1 \n use db"), which must not be
-            // swallowed into the list with an invented comma.
-            if (!sawComma) break;
+            // swallowed into the list with an invented comma. Standalone comments may stand
+            // between the column and that comma, though, and the list goes on after them.
+            if (!sawComma && PeekPastComments().Type != TokenType.Comma) break;
         }
+        // Comments carried past a comma with no column behind them are hoisted, never dropped.
+        _pendingComments.AddRange(carriedComments);
         return cols;
     }
 
@@ -991,12 +1009,15 @@ public sealed class Parser
         {
             Advance(); // (
             var sub = ParseSelectOrSet(null);
+            var closingComments = CollectStandaloneComments();
             Expect(TokenType.RightParen);
             Token? sqAlias = null;
             if (Peek().IsKeyword("AS")) { Advance(); sqAlias = Advance(); }
             else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier && !IsJoinKeyword() && !IsSelectClauseKeyword())
                 sqAlias = Advance();
-            return new TableRefNode { SubQuery = new SubQueryNode { Select = sub }, Alias = sqAlias };
+            return new TableRefNode {
+                SubQuery = new SubQueryNode { Select = sub }.Tap(q => q.CloseComments.AddRange(closingComments)),
+                Alias = sqAlias };
         }
 
         var nameParts = new List<Token>();
@@ -1163,9 +1184,11 @@ public sealed class Parser
                 Expect(TokenType.LeftParen);
                 var openC = TryTakeSameLineInlineComment();
                 var sub = ParseSelectOrSet(null);
+                var closing = CollectStandaloneComments();
                 Expect(TokenType.RightParen);
                 return new FunctionCallNode { Name = "EXISTS", IsKeywordFunction = true, Negated = true }
-                    .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub, OpenComment = openC }));
+                    .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub, OpenComment = openC }
+                        .Tap(q => q.CloseComments.AddRange(closing))));
             }
             if (nxt.Type == TokenType.LeftParen)
             {
@@ -1261,8 +1284,10 @@ public sealed class Parser
             if (PeekPastComments().IsKeyword("SELECT"))
             {
                 var sub = ParseSelectOrSet(null);
+                var closing = CollectStandaloneComments();
                 Expect(TokenType.RightParen);
-                return new SubQueryNode { Select = sub, OpenComment = openComment };
+                return new SubQueryNode { Select = sub, OpenComment = openComment }
+                    .Tap(n => n.CloseComments.AddRange(closing));
             }
             var leading = CollectStandaloneComments();
             var inner = ParseExpression();
@@ -1303,9 +1328,11 @@ public sealed class Parser
             Expect(TokenType.LeftParen);
             var openC = TryTakeSameLineInlineComment();
             var sub = ParseSelectOrSet(null);
+            var closingComments = CollectStandaloneComments();
             Expect(TokenType.RightParen);
             return new FunctionCallNode { Name = "EXISTS", IsKeywordFunction = true }
-                .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub, OpenComment = openC }));
+                .Tap(n => n.Arguments.Add(new SubQueryNode { Select = sub, OpenComment = openC }
+                    .Tap(q => q.CloseComments.AddRange(closingComments))));
         }
 
         // Function call: identifier/keyword followed by (

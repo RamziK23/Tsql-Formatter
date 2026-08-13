@@ -287,6 +287,9 @@ public sealed class SubQueryNode : AstNode
     /// <summary>A comment on the SAME line as the opening '(' (e.g. "exists ( --note").
     /// Rendered right after the '(', so it stays on that line instead of above the select.</summary>
     public string? OpenComment { get; set; }
+    /// <summary>Comments standing between the end of the subquery and its ')'. Rendered on their
+    /// own line(s) there, so a note at the bottom of a subquery stays at the bottom of it.</summary>
+    public List<string> CloseComments { get; } = new();
 }
 
 public sealed class FunctionCallNode : AstNode
