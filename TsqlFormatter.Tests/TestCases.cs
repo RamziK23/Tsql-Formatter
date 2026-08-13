@@ -914,6 +914,18 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── a function argument may be a whole condition ─────────────────────
+        new TestCase {
+            Rule = "fnbreak", Name = "iif with an and/or condition as its first argument",
+            Input    = "select iif(a = 1 and b > 2, 'x', 'y') as f from t",
+            Expected = "select\n\tiif(a = 1 and b > 2, 'x', 'y') as f\nfrom t",
+        },
+        new TestCase {
+            Rule = "fnbreak", Name = "condition group plus and inside a function argument",
+            Input    = "select iif(\n(\nw.close_dt is null\nor w.close_dt > @dto\n)\nand datediff(month, w.create_dt, w.close_dt) >= 1,\n1,\n0) as x\nfrom t as w",
+            Expected = "select\n\tiif(\n\t\t(\n\t\t\tw.close_dt is null\n\t\t\tor w.close_dt > @dto\n\t\t) and datediff(month, w.create_dt, w.close_dt) >= 1,\n\t\t1,\n\t\t0\n\t) as x\nfrom t as w",
+        },
+
         // ── leading-comma lists and comments at the bottom of a subquery ─────
         new TestCase {
             Rule = "linecmt", Name = "comment before the separating comma keeps the column list going",

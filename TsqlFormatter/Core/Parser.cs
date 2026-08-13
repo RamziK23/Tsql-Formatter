@@ -1611,7 +1611,7 @@ public sealed class Parser
         {
             // Handle OVER (...) for window functions
             if (Peek().IsKeyword("OVER")) { Advance(); args.Add(ParseWindowSpec()); continue; }
-            args.Add(ParseExpression());
+            args.Add(ParseBooleanArgument());
             if (PeekIs(TokenType.Comma)) Advance(); else break;
         }
         Expect(TokenType.RightParen);
@@ -1621,6 +1621,23 @@ public sealed class Parser
         var fn = new FunctionCallNode { Name = name, IsKeywordFunction = isKeyword, OverClause = overClause, SetQuantifier = setQuantifier };
         fn.Arguments.AddRange(args);
         return fn;
+    }
+
+    /// <summary>
+    /// Parses one function argument. An argument can be a whole condition — "iif(a = 1 and b, x, y)",
+    /// "choose(…)", "isnull((… or …) and …, 0)" — while the expression parser stops before AND/OR,
+    /// which normally belong to a condition list. The chain is folded into the expression here, so
+    /// the argument list is not cut short at the first "and" (which used to abort the whole parse).
+    /// </summary>
+    private AstNode ParseBooleanArgument()
+    {
+        var expr = ParseExpression();
+        while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+        {
+            var op = Advance();
+            expr = new BinaryExprNode { Left = expr, Op = op, Right = ParseExpression() };
+        }
+        return expr;
     }
 
     private AstNode ParseWindowSpec()
