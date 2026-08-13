@@ -148,8 +148,12 @@ internal static class RuleHelpers
         var block = new System.Text.StringBuilder();
         foreach (var c in comments)
         {
-            if (c.StartsWith("/*")) block.Append(c).Append(' ');
-            else                    line.Append(linePrefix).Append(c).Append('\n');
+            // A /* */ comment glues inline only while it fits on one line. One that spans lines
+            // (a commented-out block of columns, say) keeps its own lines — glued, it would drag
+            // the column onto the comment's closing line.
+            bool inlineBlock = c.StartsWith("/*") && !c.Contains('\n');
+            if (inlineBlock) block.Append(c).Append(' ');
+            else             line.Append(linePrefix).Append(c).Append('\n');
         }
         return (line.ToString(), block.ToString());
     }

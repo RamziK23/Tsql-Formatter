@@ -914,6 +914,18 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── a multi-line block comment keeps its own lines ───────────────────
+        new TestCase {
+            Rule = "blockcmt", Name = "multi-line block comment does not drag the next column onto its last line",
+            Input    = "select\na,\n/*old1,\nold2*/\nb\nfrom t",
+            Expected = "select\n\ta,\n\t/*old1,\nold2*/\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "single-line block comment still glues inline",
+            Input    = "select a, /*x*/ b from t",
+            Expected = "select\n\ta,/*x*/\n\tb\nfrom t",
+        },
+
         // ── a comment on the join line must not hide the ON that follows ─────
         new TestCase {
             Rule = "comments", Name = "comment after the join's alias stays on the join line",
