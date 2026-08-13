@@ -1097,9 +1097,22 @@ public sealed class Parser
         if (jt == "join") jt = "inner join";
         parts.Clear(); parts.Append(jt);
         var table = ParseTableRef();
+        // A comment on the join's line ("left join … as ug  --создал процесс") stays on that line.
+        // It must not hide the ON that follows: looked at with a plain Peek, the join came out
+        // condition-less and the rest of the statement fell apart.
+        var trailing = TryTakeSameLineInlineComment();
         var conditions = new List<AstNode>();
-        if (Peek().IsKeyword("ON")) { Advance(); conditions.AddRange(ParseConditionList(isJoinOn: true)); }
-        return new JoinNode { JoinType = parts.ToString(), Table = table }.Tap(n => n.Conditions.AddRange(conditions));
+        if (PeekPastComments().IsKeyword("ON"))
+        {
+            var beforeOn = CollectStandaloneComments();
+            Advance(); // on
+            conditions.AddRange(ParseConditionList(isJoinOn: true));
+            // Comments between the join line and ON belong above the join's conditions.
+            if (beforeOn.Count > 0 && conditions.Count > 0 && conditions[0] is ConditionNode first)
+                first.LeadingComments.InsertRange(0, beforeOn);
+        }
+        return new JoinNode { JoinType = parts.ToString(), Table = table, TrailingComment = trailing }
+            .Tap(n => n.Conditions.AddRange(conditions));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

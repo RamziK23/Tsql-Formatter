@@ -914,6 +914,18 @@ public static class TestCases
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
         },
+        // ── a comment on the join line must not hide the ON that follows ─────
+        new TestCase {
+            Rule = "comments", Name = "comment after the join's alias stays on the join line",
+            Input    = "select a\nfrom t\nleft join u as ug --создал процесс\non ug.id = t.id\nand ug.x = 1",
+            Expected = "select\n\ta\nfrom t\n\tleft join u as ug\t\t--создал процесс\n\t\ton ug.id = t.id\n\t\tand ug.x = 1",
+        },
+        new TestCase {
+            Rule = "comments", Name = "comment on its own line between the join and ON",
+            Input    = "select a\nfrom t\nleft join u as ug\n--почему так\non ug.id = t.id",
+            Expected = "select\n\ta\nfrom t\n\tleft join u as ug\n\t\t--почему так\n\t\ton ug.id = t.id",
+        },
+
         // ── a function argument may be a whole condition ─────────────────────
         new TestCase {
             Rule = "fnbreak", Name = "iif with an and/or condition as its first argument",

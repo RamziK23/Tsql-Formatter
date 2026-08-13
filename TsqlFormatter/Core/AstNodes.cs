@@ -197,6 +197,9 @@ public sealed class JoinNode : AstNode
     public List<AstNode> Conditions { get; } = new();
     /// <summary>Standalone comments that appeared on their own line(s) before this join.</summary>
     public List<string> LeadingComments { get; } = new();
+    /// <summary>A comment on the join's own line, after the table/alias:
+    /// "left join dbo.t as u  --создал процесс".</summary>
+    public string? TrailingComment { get; set; }
 }
 
 // ─── WHERE / conditions ──────────────────────────────────────────────────────

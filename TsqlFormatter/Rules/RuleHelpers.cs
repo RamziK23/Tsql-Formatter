@@ -469,8 +469,14 @@ internal static class RuleHelpers
             sb.Append($"\n{tabs}\t{c}");
 
         sb.Append($"\n{tabs}\t{join.JoinType.ToLowerInvariant()} {EmitTableRef(join.Table, engine, indent + 1)}");
+        if (join.TrailingComment != null) sb.Append(TrailingCommentSuffix(join.TrailingComment));
 
         if (join.Conditions.Count == 0) return sb.ToString();
+
+        // Comments between the join line and ON go above the ON line.
+        if (join.Conditions[0] is ConditionNode head)
+            foreach (var lc in head.LeadingComments)
+                sb.Append($"\n{tabs}\t\t{lc}");
 
         // First condition always on same line as ON
         sb.Append($"\n{tabs}\t\ton");
