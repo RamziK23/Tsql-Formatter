@@ -85,9 +85,16 @@ public sealed class ControlFlowRule : IFormatterRule
             }
             case WhileNode wh:
             {
+                // Same layout as IF: first condition on the keyword's line, the rest one tab in,
+                // body on the next line at the loop's own indent.
                 var sb = new StringBuilder();
-                sb.Append($"{tabs}while\n{RuleHelpers.EmitConditions(wh.Conditions, engine, indent + 1)}");
-                if (wh.Body != null) sb.Append($"\n{engine.Format(wh.Body, indent + 1)}");
+                var inline = RuleHelpers.EmitConditionsInline(wh.Conditions, engine, indent);
+                if (inline != null)
+                    sb.Append($"{tabs}while {inline}");
+                else
+                    sb.Append($"{tabs}while\n{RuleHelpers.EmitConditions(wh.Conditions, engine, indent + 1)}");
+
+                if (wh.Body != null) sb.Append(RuleHelpers.EmitBranchBody(wh.Body, engine, indent));
                 return sb.ToString();
             }
             case SetNode st:

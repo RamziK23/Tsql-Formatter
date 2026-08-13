@@ -900,6 +900,16 @@ public static class TestCases
             Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\ndrop table #flag",
         },
         new TestCase {
+            Rule = "while", Name = "while is laid out like if: first condition on its line, body below",
+            Input    = "while 1 < 2 and 20>5\nbegin\nselect\n1\nset @r += 1\nend",
+            Expected = "while 1 < 2\n\tand 20 > 5\nbegin\n\n\tselect\n\t\t1\n\n\tset @r += 1\n\nend",
+        },
+        new TestCase {
+            Rule = "while", Name = "while with a bare body statement",
+            Input    = "while @i < 10\nset @i = @i + 1",
+            Expected = "while @i < 10\nset @i = @i + 1",
+        },
+        new TestCase {
             Rule = "if", Name = "else branch with a select body",
             Input    = "if @i < 1 select 1 else select 0",
             Expected = "if @i < 1\nselect\n\t1\nelse\nselect\n\t0",
