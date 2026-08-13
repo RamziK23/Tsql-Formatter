@@ -161,16 +161,30 @@ public sealed class DeleteNode : AstNode
 
 // ─── SELECT columns ──────────────────────────────────────────────────────────
 
+/// <summary>
+/// A comment written before something, together with whether the source had a line break between
+/// the comment and what follows. A /* */ comment is glued in front of the expression when there
+/// was none and given its own line when there was — the layout the author chose is kept either way.
+/// </summary>
+public sealed class LeadingComment
+{
+    public string Text { get; init; } = "";
+    public bool BreakAfter { get; init; } = true;
+}
+
 public sealed class SelectColumnNode : AstNode
 {
     public AstNode Expression { get; init; } = null!;
     public Token? Alias { get; init; }
     public bool CommaLeading { get; init; }
     public string? TrailingComment { get; set; }
+    /// <summary>False when no line break stood between this column's trailing /* */ comment and
+    /// the next column, which then continues on the comment's closing line.</summary>
+    public bool TrailingBreakAfter { get; set; } = true;
     /// <summary>Comments before the column. A /* */ block comment renders inline before the
-    /// expression (/* note */ expr); a -- line comment renders on its own line above the
-    /// column (it can never precede an expression inline, or the expression is commented out).</summary>
-    public List<string> LeadingComments { get; } = new();
+    /// expression (/* note */ expr) or on its own line, following the source; a -- line comment
+    /// always renders on its own line above the column (inline it would comment the column out).</summary>
+    public List<LeadingComment> LeadingComments { get; } = new();
 }
 
 // ─── FROM / JOIN ─────────────────────────────────────────────────────────────

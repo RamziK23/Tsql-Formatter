@@ -916,7 +916,7 @@ public sealed class Parser
     {
         var cols = new List<SelectColumnNode>();
         // Comments that stood before the separating comma wait here for the column they annotate.
-        var carriedComments = new List<string>();
+        var carriedComments = new List<LeadingComment>();
         while (!IsAtEnd() && !IsSelectClauseKeyword())
         {
             if (PeekIs(TokenType.Comma)) { Advance(); continue; }
@@ -933,10 +933,15 @@ public sealed class Parser
             // comments standing on their own line (-- , rendered above the column). Capturing
             // line comments here keeps them out of ParsePrimary, where they would otherwise be
             // mis-parsed as an expression/alias.
-            var leadingComments = new List<string>(carriedComments);
+            var leadingComments = new List<LeadingComment>(carriedComments);
             carriedComments.Clear();
             while (PeekIs(TokenType.BlockComment) || PeekIs(TokenType.LineComment))
-                leadingComments.Add(Advance().Value);
+            {
+                var text = Advance().Value;
+                // Whether the author put a line break between the comment and what follows
+                // decides whether the column goes on the comment's line or the next one.
+                leadingComments.Add(new LeadingComment { Text = text, BreakAfter = NewlineFollows() });
+            }
 
             // Leading-comma style puts the separator after the comment:
             //   col1
@@ -985,7 +990,10 @@ public sealed class Parser
             // A trailing comment may also sit AFTER the comma on the same line: "a, --note"
             // or "a, /* note */". A block comment there is transparent — glued to this column.
             if (comment == null) comment = TryTakeSameLineInlineComment();
-            cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment }
+            // A /* */ comment with no line break after it keeps the next column on its line.
+            bool breakAfter = comment == null || comment.StartsWith("--") || NewlineFollows();
+            cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment,
+                                            TrailingBreakAfter = breakAfter }
                 .Tap(c => c.LeadingComments.AddRange(leadingComments)));
             // Columns are comma-separated: with no comma, the next token can't start another
             // column — it's the next statement ("select 1 \n use db"), which must not be
@@ -994,7 +1002,7 @@ public sealed class Parser
             if (!sawComma && PeekPastComments().Type != TokenType.Comma) break;
         }
         // Comments carried past a comma with no column behind them are hoisted, never dropped.
-        _pendingComments.AddRange(carriedComments);
+        _pendingComments.AddRange(carriedComments.Select(c => c.Text));
         return cols;
     }
 
@@ -2229,6 +2237,15 @@ public sealed class Parser
     {
         while (PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
             _pendingComments.Add(Advance().Value);
+    }
+
+    /// <summary>True when a newline (or the end of input) comes before the next meaningful token,
+    /// i.e. the author broke the line here.</summary>
+    private bool NewlineFollows()
+    {
+        int i = _pos;
+        while (i < _tokens.Count && _tokens[i].Type == TokenType.Whitespace) i++;
+        return i >= _tokens.Count || _tokens[i].Type is TokenType.Newline or TokenType.EndOfFile;
     }
 
     private bool TryConsume(TokenType type) { if (Peek().Type != type) return false; Advance(); return true; }

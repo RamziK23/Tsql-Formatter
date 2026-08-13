@@ -361,9 +361,9 @@ public static class TestCases
             Expected = "select\n\t*\nfrom a\nwhere\n\tid in (1, 2, 3, 4, 5, 6/*7,8,9,0*/, 1, 2, 3, 4)",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "block comment between columns trails the preceding column, no tab",
+            Rule = "blockcmt", Name = "block comment between columns keeps the source's line break (none here)",
             Input    = "SELECT 'SELECT a.[x] FROM t WHERE a.[y] = 1' AS [sql_text], /* [Alias] = expr, INNER JOIN, declare @a int */ c.[id]\nFROM [dbo].[C] c",
-            Expected = "select\n\t'SELECT a.[x] FROM t WHERE a.[y] = 1' as [sql_text],/* [Alias] = expr, INNER JOIN, declare @a int */\n\tc.[id]\nfrom [dbo].[C] as c",
+            Expected = "select\n\t'SELECT a.[x] FROM t WHERE a.[y] = 1' as [sql_text],/* [Alias] = expr, INNER JOIN, declare @a int */ c.[id]\nfrom [dbo].[C] as c",
         },
         new TestCase {
             Rule = "2.8", Name = "begin/end with declare and select, no extra end column",
@@ -921,9 +921,26 @@ public static class TestCases
             Expected = "select\n\ta,\n\t/*old1,\nold2*/\n\tb\nfrom t",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "single-line block comment still glues inline",
+            Rule = "blockcmt", Name = "single-line block comment with no break after it keeps the column on its line",
             Input    = "select a, /*x*/ b from t",
-            Expected = "select\n\ta,/*x*/\n\tb\nfrom t",
+            Expected = "select\n\ta,/*x*/ b\nfrom t",
+        },
+
+        // ── the line break around a /* */ comment follows the source ─────────
+        new TestCase {
+            Rule = "blockcmt", Name = "break after a single-line comment is kept",
+            Input    = "select\nc.title,\n/*note*/\n12 as a\nfrom a as c",
+            Expected = "select\n\tc.title,\n\t/*note*/\n\t12 as a\nfrom a as c",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "no break after a multi-line comment is kept",
+            Input    = "select\nc.title,\n/*note\nnote*/ 12 as a\nfrom a as c",
+            Expected = "select\n\tc.title,\n\t/*note\nnote*/ 12 as a\nfrom a as c",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "comment starting on the column line keeps its break",
+            Input    = "select\nc.title, /*note\nnote*/\n12 as a\nfrom a as c",
+            Expected = "select\n\tc.title,/*note\nnote*/\n\t12 as a\nfrom a as c",
         },
 
         // ── a comment on the join line must not hide the ON that follows ─────

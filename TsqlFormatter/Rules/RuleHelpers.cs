@@ -136,11 +136,25 @@ internal static class RuleHelpers
         comment.StartsWith("/*") ? comment : $"{Tabs(2)}{comment}";
 
     /// <summary>
-    /// Splits a column's leading comments into two rendered parts: line (--) comments each on
-    /// their own line above the column (prefixed by <paramref name="linePrefix"/> and ending in
-    /// a newline) and block (/* */) comments glued inline before the expression. A -- comment can
-    /// never sit inline before an expression or the expression would be commented out.
+    /// Splits a column's leading comments into two rendered parts: comments that take their own
+    /// line above the column (prefixed by <paramref name="linePrefix"/>, ending in a newline) and
+    /// comments glued inline before the expression. A -- comment always takes its own line, or the
+    /// expression would be commented out; a /* */ comment glues only when the author wrote no line
+    /// break after it, so the layout they chose survives.
     /// </summary>
+    public static (string lineLead, string blockLead) SplitLeadingComments(
+        System.Collections.Generic.List<LeadingComment> comments, string linePrefix)
+    {
+        var line = new System.Text.StringBuilder();
+        var block = new System.Text.StringBuilder();
+        foreach (var c in comments)
+        {
+            if (c.Text.StartsWith("/*") && !c.BreakAfter) block.Append(c.Text).Append(' ');
+            else                                          line.Append(linePrefix).Append(c.Text).Append('\n');
+        }
+        return (line.ToString(), block.ToString());
+    }
+
     public static (string lineLead, string blockLead) SplitLeadingComments(
         System.Collections.Generic.List<string> comments, string linePrefix)
     {
