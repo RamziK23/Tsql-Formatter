@@ -990,8 +990,12 @@ public sealed class Parser
             // A trailing comment may also sit AFTER the comma on the same line: "a, --note"
             // or "a, /* note */". A block comment there is transparent — glued to this column.
             if (comment == null) comment = TryTakeSameLineInlineComment();
-            // A /* */ comment with no line break after it keeps the next column on its line.
-            bool breakAfter = comment == null || comment.StartsWith("--") || NewlineFollows();
+            // Every column starts on a line of its own, so the list's line break has to land
+            // somewhere around a trailing /* */ comment. It goes after the comment — unless the
+            // source already broke the line there, or the comment itself spans lines, in which
+            // case the next column is on a fresh line anyway and keeps the author's layout.
+            bool breakAfter = comment == null || comment.StartsWith("--")
+                              || NewlineFollows() || !comment.Contains('\n');
             cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment,
                                             TrailingBreakAfter = breakAfter }
                 .Tap(c => c.LeadingComments.AddRange(leadingComments)));
