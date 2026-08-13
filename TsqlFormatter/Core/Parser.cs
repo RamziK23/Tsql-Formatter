@@ -425,11 +425,13 @@ public sealed class Parser
     {
         var raw = new RawTokensNode();
         raw.Tokens.Add(Lowered(Advance()));                   // begin / commit / rollback
-        // Same-line qualifiers: [distributed] tran|transaction|work
+        // Qualifiers: [distributed] tran|transaction|work. Taken even from the next line — none
+        // of these words can start a statement, and "commit \n transaction" is one statement that
+        // belongs on one line, not two ("commit" alone followed by a stray "transaction").
         while (true)
         {
-            var q = PeekSameLine();
-            if (q != null && (IsTransactionWord(q) || q.Value.Equals("WORK", StringComparison.OrdinalIgnoreCase)))
+            var q = Peek();
+            if (IsTransactionWord(q) || q.Value.Equals("WORK", StringComparison.OrdinalIgnoreCase))
                 raw.Tokens.Add(Lowered(Advance()));
             else break;
         }

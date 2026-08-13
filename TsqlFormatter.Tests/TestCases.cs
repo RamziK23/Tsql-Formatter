@@ -726,6 +726,16 @@ public static class TestCases
             Expected = "begin tran\nselect\n\t1 as x\ncommit",
         },
         new TestCase {
+            Rule = "tran", Name = "commit / rollback keep transaction on their own line",
+            Input    = "if @@TRANCOUNT > 0\nrollback \ntransaction\nif @@TRANCOUNT > 0\ncommit\n\ntransaction",
+            Expected = "if @@TRANCOUNT > 0\nrollback transaction\nif @@TRANCOUNT > 0\ncommit transaction",
+        },
+        new TestCase {
+            Rule = "tran", Name = "begin transaction split across lines is joined",
+            Input    = "begin\ntransaction\nselect 1",
+            Expected = "begin transaction\nselect\n\t1",
+        },
+        new TestCase {
             Rule = "tran", Name = "unbalanced begin (no end) is returned unchanged",
             Input    = "begin\nselect 1 as a",
             Expected = "begin\nselect 1 as a",
