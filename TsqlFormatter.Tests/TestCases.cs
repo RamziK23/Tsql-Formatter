@@ -1194,6 +1194,23 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── pivot: PIVOT / UNPIVOT laid out as a block ────────────────────────
+        new TestCase {
+            Rule = "pivot", Name = "pivot over a derived table, one IN value per line",
+            Input    = "select pvt.VendorID, pvt.[250] as Emp1\nfrom (select PurchaseOrderID, EmployeeID, VendorID from Purchasing.PurchaseOrderHeader) as p\npivot (count(PurchaseOrderID) for EmployeeID in ([250], [251])) as pvt\norder by pvt.VendorID",
+            Expected = "select\n\tpvt.VendorID,\n\tpvt.[250] as Emp1\nfrom (\n\tselect\n\t\tPurchaseOrderID,\n\t\tEmployeeID,\n\t\tVendorID\n\tfrom Purchasing.PurchaseOrderHeader\n) as p\npivot (\n\tcount(PurchaseOrderID)\n\tfor EmployeeID in (\n\t\t[250],\n\t\t[251]\n\t)\n) as pvt\norder by\n\tpvt.VendorID",
+        },
+        new TestCase {
+            Rule = "pivot", Name = "unpivot over a plain table",
+            Input    = "select cid, col, val\nfrom t\nunpivot (val for col in (a, b, c)) as u\nwhere val > 0",
+            Expected = "select\n\tcid,\n\tcol,\n\tval\nfrom t\nunpivot (\n\tval\n\tfor col in (\n\t\ta,\n\t\tb,\n\t\tc\n\t)\n) as u\nwhere\n\tval > 0",
+        },
+        new TestCase {
+            Rule = "pivot", Name = "a join after the pivot keeps its own layout",
+            Input    = "select *\nfrom #src\npivot (sum(amount) for m in ([1],[2])) as p\ninner join d on d.id = p.id",
+            Expected = "select\n\t*\nfrom #src\npivot (\n\tsum(amount)\n\tfor m in (\n\t\t[1],\n\t\t[2]\n\t)\n) as p\n\tinner join d\n\t\ton d.id = p.id",
+        },
+
         // ── sign: a + or - written in front of an operand ─────────────────────
         new TestCase {
             Rule = "sign", Name = "unary plus in a function argument",

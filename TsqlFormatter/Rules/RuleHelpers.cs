@@ -506,7 +506,41 @@ internal static class RuleHelpers
             nameStr = string.Join("", t.Name.Select(p => p.Value));
         }
         var withAlias = t.Alias != null ? $"{nameStr} as {t.Alias.Value}" : nameStr;
-        return t.HintNolock != null ? $"{withAlias} with ({t.HintNolock})" : withAlias;
+        var withHint  = t.HintNolock != null ? $"{withAlias} with ({t.HintNolock})" : withAlias;
+        return t.Pivot != null ? withHint + EmitPivot(t.Pivot, engine, indent) : withHint;
+    }
+
+    /// <summary>
+    /// Rule `pivot`: the PIVOT/UNPIVOT keyword starts its own line at the source's indent, the
+    /// aggregate and the FOR line sit one tab in, and every value of the IN list gets its own
+    /// line one tab further. The alias closes the block on the closing paren's line.
+    ///
+    ///     pivot (
+    ///         count(PurchaseOrderID)
+    ///         for EmployeeID in (
+    ///             [250],
+    ///             [251]
+    ///         )
+    ///     ) as pvt
+    /// </summary>
+    public static string EmitPivot(PivotNode p, FormatterEngine engine, int indent)
+    {
+        var t0 = Tabs(indent);
+        var t1 = Tabs(indent + 1);
+        var t2 = Tabs(indent + 2);
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"\n{t0}{p.Kind} (");
+        sb.Append($"\n{t1}{EmitExpr(p.Head, engine, indent + 1)}");
+        sb.Append($"\n{t1}for {EmitExpr(p.ForColumn, engine, indent + 1)} in (");
+        for (int i = 0; i < p.InValues.Count; i++)
+        {
+            var comma = i < p.InValues.Count - 1 ? "," : "";
+            sb.Append($"\n{t2}{EmitExpr(p.InValues[i], engine, indent + 2)}{comma}");
+        }
+        sb.Append($"\n{t1})");
+        sb.Append($"\n{t0})");
+        if (p.Alias != null) sb.Append($" as {p.Alias.Value}");
+        return sb.ToString();
     }
 
     // ─── Shared JOIN formatter ───────────────────────────────────────────────

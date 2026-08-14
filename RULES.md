@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~82 · Тестов: 228/228 · Движок: .NET 5
+- Правил: ~83 · Тестов: 231/231 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -910,6 +910,61 @@ from openquery(
 	srv,
 	'select id from t'
 ) as w
+```
+
+### `pivot` — PIVOT / UNPIVOT блоком
+Ключевое слово `pivot` (или `unpivot`) начинает **свою строку** на уровне источника, за ним
+пробел и `(`. Агрегат и строка `for … in (` — на +1 таб, каждое значение списка `in` — на своей
+строке на +2 таба. Закрывающая скобка списка на +1 таб, закрывающая скобка блока — на уровне
+`pivot`, алиас на её строке. Джойны и `where`/`order by` после блока форматируются как обычно.
+
+```sql
+-- вход
+select pvt.VendorID, pvt.[250] as Emp1
+from (select PurchaseOrderID, EmployeeID, VendorID from Purchasing.PurchaseOrderHeader) as p
+pivot (count(PurchaseOrderID) for EmployeeID in ([250], [251])) as pvt
+order by pvt.VendorID
+-- результат
+select
+	pvt.VendorID,
+	pvt.[250] as Emp1
+from (
+	select
+		PurchaseOrderID,
+		EmployeeID,
+		VendorID
+	from Purchasing.PurchaseOrderHeader
+) as p
+pivot (
+	count(PurchaseOrderID)
+	for EmployeeID in (
+		[250],
+		[251]
+	)
+) as pvt
+order by
+	pvt.VendorID
+```
+
+`unpivot` устроен так же — на месте агрегата стоит обычная колонка:
+
+```sql
+-- вход
+select cid, col, val from t unpivot (val for col in (a, b, c)) as u
+-- результат
+select
+	cid,
+	col,
+	val
+from t
+unpivot (
+	val
+	for col in (
+		a,
+		b,
+		c
+	)
+) as u
 ```
 
 ### `apply` — CROSS APPLY / OUTER APPLY с подзапросом

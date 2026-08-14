@@ -221,6 +221,25 @@ public sealed class TableRefNode : AstNode
     public List<AstNode>? FuncArgs { get; init; }
     /// <summary>True when this is an OPENQUERY(server, 'remote sql') table source (rule 7).</summary>
     public bool IsOpenQuery { get; init; }
+    /// <summary>PIVOT / UNPIVOT applied to this source, with its own alias.</summary>
+    public PivotNode? Pivot { get; set; }
+}
+
+/// <summary>
+/// PIVOT (count(x) FOR col IN ([a], [b])) AS pvt — and UNPIVOT, which has the same shape with a
+/// plain column where PIVOT has its aggregate.
+/// </summary>
+public sealed class PivotNode : AstNode
+{
+    /// <summary>"pivot" or "unpivot".</summary>
+    public string Kind { get; init; } = "pivot";
+    /// <summary>The aggregate call (PIVOT) or the value column (UNPIVOT).</summary>
+    public AstNode Head { get; init; } = null!;
+    /// <summary>The column after FOR.</summary>
+    public AstNode ForColumn { get; init; } = null!;
+    /// <summary>The IN (...) list, one entry per value.</summary>
+    public List<AstNode> InValues { get; } = new();
+    public Token? Alias { get; set; }
 }
 
 public sealed class JoinNode : AstNode

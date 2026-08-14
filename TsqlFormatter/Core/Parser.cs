@@ -1093,7 +1093,7 @@ public sealed class Parser
                 sqAlias = Advance();
             return new TableRefNode {
                 SubQuery = new SubQueryNode { Select = sub }.Tap(q => q.CloseComments.AddRange(closingComments)),
-                Alias = sqAlias };
+                Alias = sqAlias }.Tap(n => n.Pivot = TryParsePivot());
         }
 
         var nameParts = new List<Token>();
@@ -1151,7 +1151,42 @@ public sealed class Parser
             && nameParts[0].Value.Equals("openquery", System.StringComparison.OrdinalIgnoreCase)
             && funcArgs != null;
         return new TableRefNode { Alias = alias, FuncArgs = funcArgs, IsOpenQuery = isOpenQuery, HintNolock = hint }
-            .Tap(n => n.Name.AddRange(nameParts));
+            .Tap(n => { n.Name.AddRange(nameParts); n.Pivot = TryParsePivot(); });
+    }
+
+    /// <summary>
+    /// PIVOT (count(x) FOR col IN ([a], [b])) AS pvt — and UNPIVOT, which has the same shape with
+    /// a plain column where PIVOT has its aggregate. Returns null when neither follows.
+    /// </summary>
+    private PivotNode? TryParsePivot()
+    {
+        var kw = Peek();
+        if (!kw.IsKeyword("PIVOT") && !kw.IsKeyword("UNPIVOT")) return null;
+        Advance();
+        Expect(TokenType.LeftParen);
+        // ParsePrimary, not ParseExpression: the column after FOR is followed by IN, which the
+        // expression parser would happily swallow as an "x in (…)" test.
+        var head = ParsePrimary();
+        Expect(TokenType.Keyword, "FOR");
+        var forColumn = ParsePrimary();
+        Expect(TokenType.Keyword, "IN");
+        Expect(TokenType.LeftParen);
+
+        var node = new PivotNode { Kind = kw.Value.ToLowerInvariant(), Head = head, ForColumn = forColumn };
+        while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
+        {
+            node.InValues.Add(ParseExpression());
+            if (PeekIs(TokenType.Comma)) Advance();
+            else break;
+        }
+        Expect(TokenType.RightParen);   // closes IN (
+        Expect(TokenType.RightParen);   // closes PIVOT (
+
+        if (Peek().IsKeyword("AS")) { Advance(); node.Alias = Advance(); }
+        else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier
+                 && !IsJoinKeyword() && !IsSelectClauseKeyword() && !IsGoKeyword())
+            node.Alias = Advance();
+        return node;
     }
 
     private bool IsJoinKeyword()
