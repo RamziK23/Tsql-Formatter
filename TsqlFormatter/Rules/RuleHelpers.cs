@@ -78,6 +78,8 @@ internal static class RuleHelpers
             InValueGroupNode grp => grp.LeadingBlockComment
                                     + string.Join(", ", grp.Values.Select(v => EmitExpr(v, engine, indent))),
             NotExprNode n => $"not {EmitExpr(n.Inner, engine, indent)}",
+            // A sign binds to its operand with no gap: "+14", "-(a + b)".
+            UnaryExprNode u => $"{u.Op.Value}{EmitExpr(u.Operand, engine, indent)}",
             RawTokensNode rt => EmitRawTokens(rt.Tokens),
             _ => engine.Format(node, indent)
         };

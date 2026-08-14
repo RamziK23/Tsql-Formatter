@@ -1194,6 +1194,23 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── sign: a + or - written in front of an operand ─────────────────────
+        new TestCase {
+            Rule = "sign", Name = "unary plus in a function argument",
+            Input    = "select dateadd(day, +14, t.close_dt) as d\nfrom t",
+            Expected = "select\n\tdateadd(day, +14, t.close_dt) as d\nfrom t",
+        },
+        new TestCase {
+            Rule = "sign", Name = "signed columns keep their sign",
+            Input    = "select -5 as a, +5 as b\nfrom t",
+            Expected = "select\n\t-5 as a,\n\t+5 as b\nfrom t",
+        },
+        new TestCase {
+            Rule = "sign", Name = "sign in front of a parenthesised expression invents no zero",
+            Input    = "select -(a + b) as x\nfrom t\nwhere x between -1 and +2",
+            Expected = "select\n\t-(a + b) as x\nfrom t\nwhere\n\tx between -1 and +2",
+        },
+
         // ── linecmt: a -- comment on the select line stays on it ──────────────
         new TestCase {
             Rule = "linecmt", Name = "comment on the select line stays on the select line",

@@ -364,6 +364,13 @@ public sealed class NotExprNode : AstNode
     public AstNode Inner { get; init; } = null!;
 }
 
+/// <summary>A sign written in front of an operand: "+14", "-(a + b)".</summary>
+public sealed class UnaryExprNode : AstNode
+{
+    public Token Op { get; init; } = null!;
+    public AstNode Operand { get; init; } = null!;
+}
+
 public sealed class CaseExprNode : AstNode
 {
     public AstNode? InputExpr { get; init; }

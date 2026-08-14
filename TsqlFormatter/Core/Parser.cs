@@ -1447,20 +1447,17 @@ public sealed class Parser
             return col;
         }
 
-        // Unary minus: -1 → negative literal; -(expr) → BinaryExpr
-        if (tok.Type == TokenType.Minus)
+        // A sign in front of an operand: "-1" folds into a negative literal, everything else
+        // ("+14" in dateadd(day, +14, …), "-(a + b)") keeps the sign in front of the operand.
+        // A leading '+' used to reach none of this and derailed the whole statement; the old
+        // "-(expr) → 0 - expr" shape fabricated a zero the source never had, which the
+        // faithfulness check then rejected, throwing the formatting away.
+        if (tok.Type is TokenType.Minus or TokenType.Plus)
         {
             Advance();
-            var next = Peek();
-            if (next.Type == TokenType.NumberLiteral)
+            if (tok.Type == TokenType.Minus && PeekIs(TokenType.NumberLiteral))
                 return new LiteralNode { Token = new Token(TokenType.NumberLiteral, "-" + Advance().Value) };
-            var operand = ParsePrimary();
-            return new BinaryExprNode
-            {
-                Left  = new LiteralNode { Token = new Token(TokenType.NumberLiteral, "0") },
-                Op    = tok,
-                Right = operand
-            };
+            return new UnaryExprNode { Op = tok, Operand = ParsePrimary() };
         }
 
         // Literals
