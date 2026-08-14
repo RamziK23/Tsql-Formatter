@@ -92,6 +92,8 @@ public sealed class SelectStatementNode : AstNode
     public List<AstNode> HavingConditions { get; } = new();
     public List<AstNode> OrderByColumns { get; } = new();
     public List<AstNode> CteDefinitions { get; } = new();
+    /// <summary>A -- comment written on the SELECT line itself; it stays on that line.</summary>
+    public string? HeaderComment { get; set; }
     /// <summary>Standalone comments between the column list and INTO/FROM — a commented-out
     /// clause, usually. Rendered on their own line(s) there.</summary>
     public List<string> PreFromComments { get; } = new();

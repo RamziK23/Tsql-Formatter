@@ -228,9 +228,9 @@ public static class TestCases
 
         // ── bug 2: line comments in the column list stay on their own line ────
         new TestCase {
-            Rule = "parse-safety", Name = "commented-out top and column stay on own line, real columns kept",
+            Rule = "parse-safety", Name = "commented-out top stays on the select line, real columns kept",
             Input    = "select --top (@top)\n w.cid as objectId,\n--  '' as comment,\n ac.title as city_title\nfrom t",
-            Expected = "select\n\t--top (@top)\n\tw.cid as objectId,\n\t--  '' as comment,\n\tac.title as city_title\nfrom t",
+            Expected = "select\t\t--top (@top)\n\tw.cid as objectId,\n\t--  '' as comment,\n\tac.title as city_title\nfrom t",
         },
 
         // ── bug 0/3: comment before a subquery SELECT must not desync the parser ─
@@ -865,9 +865,9 @@ public static class TestCases
             Expected = "select\n\t@a = 1,\n\tb",
         },
         new TestCase {
-            Rule = "assign", Name = "-- comment above the first assignment keeps the broken-out layout",
+            Rule = "assign", Name = "-- comment on the select line keeps the broken-out layout",
             Input    = "select --note\n@a = 1, @b = 2",
-            Expected = "select\n\t--note\n\t@a = 1,\n\t@b = 2",
+            Expected = "select\t\t--note\n\t@a = 1,\n\t@b = 2",
         },
         new TestCase {
             Rule = "if", Name = "first condition on the if line, the rest one tab in",
@@ -1192,6 +1192,23 @@ public static class TestCases
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
+        },
+
+        // ── linecmt: a -- comment on the select line stays on it ──────────────
+        new TestCase {
+            Rule = "linecmt", Name = "comment on the select line stays on the select line",
+            Input    = "select  -- делитель для коэф.\n  d.process_id, count(1) as [n]\n into #enter\n from #DATA as d\n group by d.process_id",
+            Expected = "select\t\t-- делитель для коэф.\n\td.process_id,\n\tcount(1) as [n]\ninto #enter\nfrom #DATA as d\ngroup by\n\td.process_id",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "comment written below select keeps its own line",
+            Input    = "select\n--note\na, b\nfrom t",
+            Expected = "select\n\t--note\n\ta,\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "comment after distinct/top stays on the select line",
+            Input    = "select distinct top 10 --note\na\nfrom t",
+            Expected = "select distinct top 10\t\t--note\n\ta\nfrom t",
         },
 
         // ── cmt-safety: a comment must not hide a DELETE/UPDATE clause ────────

@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~81 · Тестов: 220/220 · Движок: .NET 5
+- Правил: ~81 · Тестов: 223/223 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -571,13 +571,33 @@ select --top (@top)
 	b.c	--note
 from t
 -- результат
-select
-	--top (@top)
+select		--top (@top)
 	w.cid as objectId,
 	--	'' as comment,
 	ac.title as city_title,
 	b.c		--note
 from t
+```
+
+Комментарий, написанный **на строке самого `select`**, там и остаётся (через два таба) — он
+относится к оператору, а не к первой колонке, и не переезжает на её строку. Комментарий,
+написанный ниже, на отдельной строке, свою строку сохраняет.
+
+```sql
+-- вход
+select  -- делитель для коэф. услуг по процессу
+  d.process_id, count(1) as [n]
+ into #enter
+ from #DATA as d
+ group by d.process_id
+-- результат
+select		-- делитель для коэф. услуг по процессу
+	d.process_id,
+	count(1) as [n]
+into #enter
+from #DATA as d
+group by
+	d.process_id
 ```
 
 Комментарий между колонками не обрывает список и при «запятой в начале строки»: в стиле

@@ -658,6 +658,9 @@ public sealed class Parser
         var node = new SelectStatementNode { IsDistinct = distinct, TopExpr = topExpr };
         node.LeadingComments.AddRange(leadingComments);
         if (ctes != null) node.CteDefinitions.AddRange(ctes);
+        // A -- comment written on the SELECT line itself annotates the statement, not the first
+        // column: it stays on the select line instead of moving down onto the column's line.
+        node.HeaderComment = TryTakeSameLineComment();
         node.Columns.AddRange(ParseSelectColumns());
         // SELECT ... INTO #tbl / ##global / schema.table / [quoted]
         // A comment between the column list and INTO/FROM (a commented-out clause, typically)

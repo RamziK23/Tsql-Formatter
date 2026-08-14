@@ -41,12 +41,16 @@ public sealed class SelectRule : IFormatterRule
         var header = new System.Text.StringBuilder($"{tabs}select");
         if (sel.IsDistinct) header.Append(" distinct");
         if (sel.TopExpr != null) header.Append($" top {sel.TopExpr}");
+        // A comment the author put on the select line stays there, two tabs out.
+        if (sel.HeaderComment != null) header.Append(RuleHelpers.TrailingCommentSuffix(sel.HeaderComment));
 
         // ── Columns ───────────────────────────────────────────────────────────
         // Every column goes on its own indented line (+1 tab), regardless of count — except in
         // an assignment SELECT ("select @a = 1, @b = 2"), where the first assignment stays on
         // the select line like a declare.
-        bool inlineFirst = IsVariableAssignment(sel);
+        // A -- comment closing the select line rules out keeping the first assignment there:
+        // it would end up commented out.
+        bool inlineFirst = IsVariableAssignment(sel) && sel.HeaderComment == null;
         sb.Append(header);
         for (int i = 0; i < sel.Columns.Count; i++)
         {
