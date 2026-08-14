@@ -1206,6 +1206,16 @@ public static class TestCases
             Expected = "select\n\t--note\n\ta,\n\tb\nfrom t",
         },
         new TestCase {
+            Rule = "blockcmt", Name = "block comment closing the select line stays on it",
+            Input    = "select /*note*/\na, b\nfrom t",
+            Expected = "select/*note*/\n\ta,\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment with a column behind it travels with that column",
+            Input    = "select /*note*/ a, b\nfrom t",
+            Expected = "select\n\t/*note*/ a,\n\tb\nfrom t",
+        },
+        new TestCase {
             Rule = "linecmt", Name = "comment after distinct/top stays on the select line",
             Input    = "select distinct top 10 --note\na\nfrom t",
             Expected = "select distinct top 10\t\t--note\n\ta\nfrom t",

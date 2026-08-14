@@ -658,9 +658,10 @@ public sealed class Parser
         var node = new SelectStatementNode { IsDistinct = distinct, TopExpr = topExpr };
         node.LeadingComments.AddRange(leadingComments);
         if (ctes != null) node.CteDefinitions.AddRange(ctes);
-        // A -- comment written on the SELECT line itself annotates the statement, not the first
-        // column: it stays on the select line instead of moving down onto the column's line.
-        node.HeaderComment = TryTakeSameLineComment();
+        // A comment closing the SELECT line annotates the statement, not the first column: it
+        // stays on the select line instead of moving down onto the column's line. A /* */ comment
+        // with a column still behind it on that line is that column's, and travels with it.
+        node.HeaderComment = TryTakeLineClosingComment();
         node.Columns.AddRange(ParseSelectColumns());
         // SELECT ... INTO #tbl / ##global / schema.table / [quoted]
         // A comment between the column list and INTO/FROM (a commented-out clause, typically)
@@ -2256,6 +2257,32 @@ public sealed class Parser
     /// Like TryTakeSameLineComment but also catches inline block comments (/* ... */) that
     /// sit on the same line, e.g. "expr /* note */ and ...". Returns null if none.
     /// </summary>
+    /// <summary>
+    /// Takes the comment that CLOSES the current line, if there is one: a -- comment always (it
+    /// closes its line by definition), a /* */ comment only when the author wrote a line break
+    /// after it. A block comment with code still behind it on the same line belongs to that code
+    /// and stays glued to it, the way it was written.
+    /// </summary>
+    private string? TryTakeLineClosingComment()
+    {
+        int i = _pos;
+        while (i < _tokens.Count && _tokens[i].Type == TokenType.Whitespace) i++;
+        if (i >= _tokens.Count) return null;
+        if (_tokens[i].Type == TokenType.BlockComment)
+        {
+            int j = i + 1;
+            while (j < _tokens.Count && _tokens[j].Type == TokenType.Whitespace) j++;
+            if (j < _tokens.Count && _tokens[j].Type is not (TokenType.Newline or TokenType.EndOfFile))
+                return null;
+        }
+        else if (_tokens[i].Type != TokenType.LineComment) return null;
+
+        var val = _tokens[i].Value;
+        _pos = i + 1;
+        if (_hoistComments) { _pendingComments.Add(val); return null; }
+        return val;
+    }
+
     private string? TryTakeSameLineInlineComment()
     {
         int i = _pos;
