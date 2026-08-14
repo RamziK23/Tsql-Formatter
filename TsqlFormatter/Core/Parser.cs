@@ -678,6 +678,10 @@ public sealed class Parser
         if (Peek().IsKeyword("FROM"))
         {
             Advance();
+            // FROM may list several sources separated by commas (the old-style cross join):
+            // "from a as t1, b as t2, #c as t3". Each source can be followed by its own joins.
+            do
+            {
             var fromTable = ParseTableRef();
             node.FromClauses.Add(fromTable);
             // A -- comment on the SAME line as the FROM table stays attached to that line
@@ -709,6 +713,7 @@ public sealed class Parser
                     break;
                 }
             }
+            } while (PeekIs(TokenType.Comma) && AdvanceAndTrue());
         }
         if (Peek().IsKeyword("WHERE"))  { Advance(); node.WhereConditions.AddRange(ParseConditionList(isJoinOn: false)); }
         if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }

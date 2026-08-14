@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~80 · Тестов: 209/209 · Движок: .NET 5
+- Правил: ~81 · Тестов: 213/213 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -752,6 +752,36 @@ from t
 	inner join u
 		on u.id = t.id
 		and u.x = t.y
+```
+
+### `fromlist` — Несколько источников через запятую
+Первый источник остаётся на строке `from`, каждый следующий — с новой строки с одной
+табуляцией. Запятая закрывает предыдущий источник: она ставится **после** его джойнов и
+**перед** его `--` комментарием, чтобы не оказаться закомментированной.
+
+```sql
+-- вход
+select *
+from webcar.dbo.city as t1, 
+webcar.dbo.city as t2, 	#test as t3
+-- результат
+select
+	*
+from webcar.dbo.city as t1,
+	webcar.dbo.city as t2,
+	#test as t3
+```
+
+```sql
+-- вход
+select a from t1 as a inner join u on u.id = a.id, t2 as b
+-- результат
+select
+	a
+from t1 as a
+	inner join u
+		on u.id = a.id,
+	t2 as b
 ```
 
 ### `hint` — Табличный хинт `with (nolock)`

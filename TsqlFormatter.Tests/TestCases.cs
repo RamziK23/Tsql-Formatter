@@ -1193,6 +1193,28 @@ public static class TestCases
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
+
+        // ── fromlist: several comma-separated FROM sources ────────────────────
+        new TestCase {
+            Rule = "fromlist", Name = "three sources: first on the from line, the rest one tab in",
+            Input    = "select *\nfrom webcar.dbo.city as t1, \nwebcar.dbo.city as t2, \t#test as t3",
+            Expected = "select\n\t*\nfrom webcar.dbo.city as t1,\n\twebcar.dbo.city as t2,\n\t#test as t3",
+        },
+        new TestCase {
+            Rule = "fromlist", Name = "two sources followed by where",
+            Input    = "select a from t1, t2 where t1.id = t2.id",
+            Expected = "select\n\ta\nfrom t1,\n\tt2\nwhere\n\tt1.id = t2.id",
+        },
+        new TestCase {
+            Rule = "fromlist", Name = "comma goes before the source's trailing comment",
+            Input    = "select a\nfrom t1 as a --note\n, t2 as b",
+            Expected = "select\n\ta\nfrom t1 as a,\t\t--note\n\tt2 as b",
+        },
+        new TestCase {
+            Rule = "fromlist", Name = "joins stay with their source, comma closes it after the on line",
+            Input    = "select a from t1 as a inner join u on u.id = a.id, t2 as b",
+            Expected = "select\n\ta\nfrom t1 as a\n\tinner join u\n\t\ton u.id = a.id,\n\tt2 as b",
+        },
     };
 }
 

@@ -84,17 +84,38 @@ public sealed class SelectRule : IFormatterRule
         if (sel.FromClauses.Count > 0)
         {
             sb.Append($"\n{tabs}from");
+            // A FROM can list several sources ("from a as t1, b as t2"); the joins that follow a
+            // source belong to it. The first source stays on the from line, each further one goes
+            // on its own line one tab in, and the comma closes the source before it — after its
+            // joins, and before its trailing -- comment so the comma is never commented out.
+            var sources = new List<(StringBuilder Body, string? Comment)>();
             foreach (var clause in sel.FromClauses)
             {
-                if (clause is JoinNode join)
-                    sb.Append(RuleHelpers.FormatJoin(join, engine, indent));
-                else if (clause is TableRefNode tref)
+                if (clause is TableRefNode tref)
+                    sources.Add((new StringBuilder(RuleHelpers.EmitTableRef(tref, engine, indent)),
+                                 tref.TrailingComment));
+                else if (clause is JoinNode join)
                 {
-                    sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
-                    // A same-line -- comment stays on the FROM line.
-                    if (tref.TrailingComment != null)
-                        sb.Append($"{RuleHelpers.Tabs(2)}{tref.TrailingComment}");
+                    if (sources.Count == 0) sources.Add((new StringBuilder(), null));
+                    // A join lands after the source's comment, on its own line, so the comment
+                    // stays where it was written.
+                    var (body, comment) = sources[^1];
+                    if (comment != null)
+                    {
+                        body.Append($"{RuleHelpers.Tabs(2)}{comment}");
+                        sources[^1] = (body, null);
+                    }
+                    body.Append(RuleHelpers.FormatJoin(join, engine, indent));
                 }
+            }
+
+            for (int i = 0; i < sources.Count; i++)
+            {
+                var (body, comment) = sources[i];
+                var text = body.ToString()
+                         + (i < sources.Count - 1 ? "," : "")
+                         + (comment != null ? $"{RuleHelpers.Tabs(2)}{comment}" : "");
+                sb.Append(i == 0 ? $" {text}" : $"\n{tabs}\t{text}");
             }
         }
 
