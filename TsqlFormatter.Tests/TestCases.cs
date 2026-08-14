@@ -143,24 +143,24 @@ public static class TestCases
             Expected = "declare @m decimal(18, 2)",
         },
         new TestCase {
-            Rule = "2.15", Name = "window function: space before over (",
+            Rule = "2.15", Name = "window function: over on its own line, items one per line",
             Input    = "select row_number() over (partition by dep order by sal desc) as rn from emp",
-            Expected = "select\n\trow_number() over (partition by dep order by sal desc) as rn\nfrom emp",
+            Expected = "select\n\trow_number()\n\t\tover (\n\t\t\tpartition by\n\t\t\t\tdep\n\t\t\torder by\n\t\t\t\tsal desc\n\t\t) as rn\nfrom emp",
         },
         new TestCase {
             Rule = "window", Name = "over: uppercase ORDER BY and dotted column lowercased/tightened",
             Input    = "select row_number() OVER (ORDER BY a.[Id]) as [Rn] from [dbo].[A] a",
-            Expected = "select\n\trow_number() over (order by a.[Id]) as [Rn]\nfrom [dbo].[A] as a",
+            Expected = "select\n\trow_number()\n\t\tover (\n\t\t\torder by\n\t\t\t\ta.[Id]\n\t\t) as [Rn]\nfrom [dbo].[A] as a",
         },
         new TestCase {
             Rule = "window", Name = "over: partition by + order by desc, uppercase and dotted",
             Input    = "select sum(x) OVER (PARTITION BY a.[G] ORDER BY a.[D] DESC) as s from t",
-            Expected = "select\n\tsum(x) over (partition by a.[G] order by a.[D] desc) as s\nfrom t",
+            Expected = "select\n\tsum(x)\n\t\tover (\n\t\t\tpartition by\n\t\t\t\ta.[G]\n\t\t\torder by\n\t\t\t\ta.[D] desc\n\t\t) as s\nfrom t",
         },
         new TestCase {
             Rule = "window", Name = "over: multiple partition/order columns keep comma spacing",
             Input    = "select count(*) OVER (PARTITION BY a.[G1], a.[G2] ORDER BY a.[D1], a.[D2]) as c from t",
-            Expected = "select\n\tcount(*) over (partition by a.[G1], a.[G2] order by a.[D1], a.[D2]) as c\nfrom t",
+            Expected = "select\n\tcount(*)\n\t\tover (\n\t\t\tpartition by\n\t\t\t\ta.[G1],\n\t\t\t\ta.[G2]\n\t\t\torder by\n\t\t\t\ta.[D1],\n\t\t\t\ta.[D2]\n\t\t) as c\nfrom t",
         },
 
         // ── convert/cast keep type parens; dotted function calls; stmt boundaries ─
@@ -924,6 +924,18 @@ public static class TestCases
             Rule = "blockcmt", Name = "one-line comment between columns: the break lands after it",
             Input    = "select a, /*x*/ b from t",
             Expected = "select\n\ta,/*x*/\n\tb\nfrom t",
+        },
+
+        // ── OVER (…) is laid out as a list ───────────────────────────────────
+        new TestCase {
+            Rule = "window", Name = "over with partition and order lists, alias after the paren",
+            Input    = "select first_value(w.decision_group)\nover (\npartition by\nw.organization_id,new_column\norder by\ndecision_group,new_column\n) as updated_decision_group\nfrom #res as w",
+            Expected = "select\n\tfirst_value(w.decision_group)\n\t\tover (\n\t\t\tpartition by\n\t\t\t\tw.organization_id,\n\t\t\t\tnew_column\n\t\t\torder by\n\t\t\t\tdecision_group,\n\t\t\t\tnew_column\n\t\t) as updated_decision_group\nfrom #res as w",
+        },
+        new TestCase {
+            Rule = "window", Name = "frame clause keeps its own line",
+            Input    = "select first_value(g) over (partition by p order by p asc rows unbounded preceding) as f from t",
+            Expected = "select\n\tfirst_value(g)\n\t\tover (\n\t\t\tpartition by\n\t\t\t\tp\n\t\t\torder by\n\t\t\t\tp asc\n\t\t\trows unbounded preceding\n\t\t) as f\nfrom t",
         },
 
         // ── a comment between the column list and INTO/FROM ─────────────────

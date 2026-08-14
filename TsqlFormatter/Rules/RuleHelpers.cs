@@ -72,6 +72,7 @@ internal static class RuleHelpers
             LikeExprNode  lk => EmitLike(lk, engine, indent),
             IsNullExprNode isn => EmitIsNull(isn, engine, indent),
             SubQueryNode  sq => EmitSubQuery(sq, engine, indent),
+            WindowSpecNode ws => EmitOver(ws, engine, indent),
             FunctionCallNode fn => EmitFunction(fn, engine, indent),
             CaseExprNode  ce => EmitCase(ce, engine, indent),
             InValueGroupNode grp => grp.LeadingBlockComment
@@ -228,6 +229,43 @@ internal static class RuleHelpers
         return $"{left} {not} (\n{string.Join("\n", inLines)}\n{Tabs(indent)})";
     }
 
+    /// <summary>
+    /// Renders a window function's OVER clause: the keyword on its own line one tab in, each
+    /// PARTITION BY / ORDER BY item on a line of its own one tab further, the closing paren back
+    /// at the OVER's indent — so a long window spec reads as a list, like every other list here.
+    /// </summary>
+    private static string EmitOver(AstNode over, FormatterEngine engine, int indent)
+    {
+        // A spec the parser could not break down stays inline, as before.
+        if (over is not WindowSpecNode w) return $" over ({EmitExpr(over, engine, indent)})";
+
+        var t1 = Tabs(indent + 1);
+        var t2 = Tabs(indent + 2);
+        var t3 = Tabs(indent + 3);
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"\n{t1}over (");
+        AppendWindowList(sb, "partition by", w.PartitionBy, engine, t2, t3, indent + 3);
+        AppendWindowList(sb, "order by",     w.OrderBy,     engine, t2, t3, indent + 3);
+        // The frame run also holds the whitespace before ')' — only emit it when there is a
+        // real clause (ROWS/RANGE …) in there.
+        if (w.Frame.Any(t => t.Type is not (TokenType.Whitespace or TokenType.Newline)))
+            sb.Append($"\n{t2}{EmitRawTokens(w.Frame)}");
+        sb.Append($"\n{t1})");
+        return sb.ToString();
+    }
+
+    private static void AppendWindowList(System.Text.StringBuilder sb, string keyword,
+        List<AstNode> items, FormatterEngine engine, string keywordIndent, string itemIndent, int indent)
+    {
+        if (items.Count == 0) return;
+        sb.Append($"\n{keywordIndent}{keyword}");
+        for (int i = 0; i < items.Count; i++)
+        {
+            sb.Append($"\n{itemIndent}{EmitExpr(items[i], engine, indent)}");
+            if (i < items.Count - 1) sb.Append(",");
+        }
+    }
+
     private static string EmitBetween(BetweenExprNode bt, FormatterEngine engine, int indent)
         => $"{EmitExpr(bt.Left, engine, indent)} {(bt.Negated ? "not between" : "between")} "
          + $"{EmitExpr(bt.Low, engine, indent)} and {EmitExpr(bt.High, engine, indent)}";
@@ -282,9 +320,7 @@ internal static class RuleHelpers
         // newid(). A schema-qualified name (dbo.MyFunc) keeps its case.
         var fnName = (fn.IsKeywordFunction || !fn.Name.Contains('.'))
             ? fn.Name.ToLowerInvariant() : fn.Name;
-        var overStr = fn.OverClause != null
-            ? $" over ({EmitExpr(fn.OverClause, engine, indent)})"
-            : "";
+        var overStr = fn.OverClause != null ? EmitOver(fn.OverClause, engine, indent) : "";
 
         // Decide whether to break arguments onto their own lines:
         // do so when at least one argument renders as multiline (contains a CASE,

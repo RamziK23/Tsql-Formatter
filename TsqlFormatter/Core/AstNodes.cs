@@ -316,6 +316,17 @@ public sealed class SubQueryNode : AstNode
     public List<string> CloseComments { get; } = new();
 }
 
+/// <summary>
+/// The OVER (…) specification of a window function: PARTITION BY / ORDER BY lists plus any frame
+/// clause (ROWS/RANGE …) kept as raw tokens.
+/// </summary>
+public sealed class WindowSpecNode : AstNode
+{
+    public List<AstNode> PartitionBy { get; } = new();
+    public List<AstNode> OrderBy { get; } = new();
+    public List<Token> Frame { get; } = new();
+}
+
 public sealed class FunctionCallNode : AstNode
 {
     public string Name { get; init; } = string.Empty;

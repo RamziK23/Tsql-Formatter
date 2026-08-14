@@ -1672,20 +1672,38 @@ public sealed class Parser
         return expr;
     }
 
+    /// <summary>
+    /// OVER (PARTITION BY … ORDER BY … [frame]). The two lists are parsed like any other
+    /// expression / order-by list so each item can be given its own line; a frame clause
+    /// (ROWS/RANGE …) has no structure worth breaking up and is kept as raw tokens.
+    /// </summary>
     private AstNode ParseWindowSpec()
     {
-        // OVER (PARTITION BY ... ORDER BY ...)  — emit as raw tokens for now
         Expect(TokenType.LeftParen);
-        var raw = new RawTokensNode();
+        var spec = new WindowSpecNode();
+
+        if (Peek().IsKeyword("PARTITION"))
+        {
+            Advance();
+            Expect(TokenType.Keyword, "BY");
+            spec.PartitionBy.AddRange(ParseExpressionList());
+        }
+        if (Peek().IsKeyword("ORDER"))
+        {
+            Advance();
+            Expect(TokenType.Keyword, "BY");
+            spec.OrderBy.AddRange(ParseOrderByList());
+        }
+
         int depth = 1;
         while (!IsAtEnd() && depth > 0)
         {
             var t = PeekRaw();
             if (t.Type == TokenType.LeftParen)  depth++;
             if (t.Type == TokenType.RightParen) { depth--; if (depth == 0) { AdvanceRaw(); break; } }
-            raw.Tokens.Add(AdvanceRaw());
+            spec.Frame.Add(AdvanceRaw());
         }
-        return raw;
+        return spec;
     }
 
     private List<AstNode> ParseExpressionList()

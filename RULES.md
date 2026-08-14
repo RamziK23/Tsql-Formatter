@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~80 · Тестов: 207/207 · Движок: .NET 5
+- Правил: ~80 · Тестов: 209/209 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -989,15 +989,47 @@ from t
 ```
 
 ### `window` — Оконные функции OVER (…): нижний регистр и умные пробелы
-`partition by` / `order by` внутри окна лоуэркейзятся; точки/скобки без лишних пробелов.
+`over (` переносится на следующую строку с табом от самой функции; `partition by` и `order by` —
+ещё на таб глубже, каждый их элемент — на своей строке с ещё одним табом; закрывающая `)` — на
+уровне `over`, алиас остаётся на её строке. Клауза окна (`rows unbounded preceding` и т.п.)
+выводится отдельной строкой на уровне `partition by`. Ключевые слова в нижнем регистре, точки и
+скобки без лишних пробелов.
 
 ```sql
 -- вход
 select row_number() OVER (ORDER BY a.[Id]) as [Rn] from t
 -- результат
 select
-	row_number() over (order by a.[Id]) as [Rn]
+	row_number()
+		over (
+			order by
+				a.[Id]
+		) as [Rn]
 from t
+```
+
+```sql
+-- вход
+select first_value(w.decision_group)
+over (
+partition by
+w.organization_id,new_column
+order by
+decision_group,new_column
+) as updated_decision_group
+from #res as w
+-- результат
+select
+	first_value(w.decision_group)
+		over (
+			partition by
+				w.organization_id,
+				new_column
+			order by
+				decision_group,
+				new_column
+		) as updated_decision_group
+from #res as w
 ```
 
 ### `dottedfn` — Функции с составным именем `schema.fn(args)`
