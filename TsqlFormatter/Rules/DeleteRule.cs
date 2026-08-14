@@ -22,10 +22,23 @@ public sealed class DeleteRule : IFormatterRule
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new System.Text.StringBuilder();
 
+        // True once a "from" has been written, so the joins of a DELETE FROM don't get a second one.
+        bool fromWritten = false;
         if (del.Table != null)
         {
-            // DELETE FROM table ...
-            sb.Append($"{tabs}delete from {RuleHelpers.EmitTableRef(del.Table, engine, indent)}");
+            // DELETE FROM table ... — normally one line. A comment written between DELETE and
+            // FROM keeps its place instead: it closes the delete line and the clause moves down.
+            if (del.PreFromComments.Count > 0)
+            {
+                sb.Append($"{tabs}delete{RuleHelpers.TrailingCommentSuffix(del.PreFromComments[0])}");
+                foreach (var c in del.PreFromComments.Skip(1)) sb.Append($"\n{tabs}{c}");
+                sb.Append($"\n{tabs}from {RuleHelpers.EmitTableRef(del.Table, engine, indent)}");
+            }
+            else
+            {
+                sb.Append($"{tabs}delete from {RuleHelpers.EmitTableRef(del.Table, engine, indent)}");
+            }
+            fromWritten = true;
         }
         else if (del.TargetAlias != null)
         {
@@ -37,18 +50,27 @@ public sealed class DeleteRule : IFormatterRule
             sb.Append($"{tabs}delete");
         }
 
+        // A comment on the delete line stays on it — a -- comment offset by two tabs, a /* */
+        // comment glued, exactly like a trailing comment anywhere else.
+        if (del.TargetComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(del.TargetComment));
+        if (!fromWritten)
+            foreach (var c in del.PreFromComments) sb.Append($"\n{tabs}{c}");
+
         // FROM / JOINs
-        if (del.FromClauses.Count > 0)
+        foreach (var clause in del.FromClauses)
         {
-            sb.Append($"\n{tabs}from");
-            foreach (var clause in del.FromClauses)
+            if (clause is JoinNode join)
+                sb.Append(RuleHelpers.FormatJoin(join, engine, indent));
+            else if (clause is TableRefNode tref)
             {
-                if (clause is JoinNode join)
-                    sb.Append(RuleHelpers.FormatJoin(join, engine, indent));
-                else if (clause is TableRefNode tref)
-                    sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
+                if (!fromWritten) { sb.Append($"\n{tabs}from"); fromWritten = true; }
+                sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
             }
         }
+
+        // Comments written between the FROM/JOIN block and WHERE keep their own lines.
+        foreach (var c in del.PreWhereComments)
+            sb.Append($"\n{tabs}{c}");
 
         // WHERE — same flat layout as SELECT (rule where-or: no outer parens are added,
         // and/or start their lines, source paren groups are preserved by the parser).

@@ -845,6 +845,13 @@ public sealed class Parser
     {
         Advance(); // UPDATE
         var table = ParseTableRef();
+        // A comment on the "update tbl" line stays on it; one written on its own line before SET
+        // keeps its own line. Either way it must not hide the SET behind it.
+        var targetComment = TryTakeSameLineInlineComment();
+        var preSet   = new List<string>();
+        var preFrom  = new List<string>();
+        var preWhere = new List<string>();
+        PeekClause("SET", preSet);
         Expect(TokenType.Keyword, "SET");
 
         var assignments = new List<AssignmentNode>();
@@ -857,22 +864,55 @@ public sealed class Parser
         } while (PeekIs(TokenType.Comma) && AdvanceAndTrue());
 
         var fromClauses = new List<AstNode>();
-        if (Peek().IsKeyword("FROM"))
+        if (PeekClause("FROM", preFrom))
         {
             Advance();
             fromClauses.Add(ParseTableRef());
-            while (IsJoinKeyword()) fromClauses.Add(ParseJoin());
+            fromClauses.AddRange(ParseTrailingJoins(preWhere));
         }
 
         var whereConds = new List<AstNode>();
-        if (Peek().IsKeyword("WHERE")) { Advance(); whereConds.AddRange(ParseConditionList(isJoinOn: false)); }
+        if (PeekClause("WHERE", preWhere)) { Advance(); whereConds.AddRange(ParseConditionList(isJoinOn: false)); }
 
-        return new UpdateNode { Table = table }.Tap(n =>
+        return new UpdateNode { Table = table, TargetComment = targetComment }.Tap(n =>
         {
             n.Assignments.AddRange(assignments);
             n.FromClauses.AddRange(fromClauses);
             n.WhereConditions.AddRange(whereConds);
+            n.PreSetComments.AddRange(preSet);
+            n.PreFromComments.AddRange(preFrom);
+            n.PreWhereComments.AddRange(preWhere);
         });
+    }
+
+    /// <summary>
+    /// Reads the JOINs that follow a FROM source in an UPDATE/DELETE, tolerating standalone
+    /// comments in front of each one (they render above their join). A trailing run of comments
+    /// belongs to this statement only when it actually continues with WHERE; otherwise it is given
+    /// back untouched, so the script level attaches it to the next statement together with the
+    /// blank lines the source had around it.
+    /// </summary>
+    private List<AstNode> ParseTrailingJoins(List<string> trailingSink)
+    {
+        var joins = new List<AstNode>();
+        while (true)
+        {
+            int beforeComments = _pos;
+            var pending = CollectStandaloneComments();
+            if (IsJoinKeyword())
+            {
+                var join = ParseJoin();
+                join.LeadingComments.AddRange(pending);
+                joins.Add(join);
+                continue;
+            }
+            if (pending.Count > 0)
+            {
+                if (Peek().IsKeyword("WHERE")) trailingSink.AddRange(pending);
+                else _pos = beforeComments;
+            }
+            return joins;
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -889,33 +929,42 @@ public sealed class Parser
         TableRefNode? targetAlias = null;
         TableRefNode? table = null;
         var fromClauses = new List<AstNode>();
+        var preFrom  = new List<string>();
+        var preWhere = new List<string>();
+        string? targetComment = null;
 
-        if (Peek().IsKeyword("FROM"))
+        if (PeekClause("FROM", preFrom))
         {
             // DELETE FROM tbl ...
             Advance();
             table = ParseTableRef();
-            while (IsJoinKeyword()) fromClauses.Add(ParseJoin());
+            targetComment = TryTakeSameLineInlineComment();
+            fromClauses.AddRange(ParseTrailingJoins(preWhere));
         }
         else
         {
             // DELETE alias FROM tbl ...
             targetAlias = ParseTableRef();
-            if (Peek().IsKeyword("FROM"))
+            // A comment on the "delete d" line stays on it instead of hiding the FROM that
+            // follows — the reason such a script came back completely unformatted.
+            targetComment = TryTakeSameLineInlineComment();
+            if (PeekClause("FROM", preFrom))
             {
                 Advance();
                 fromClauses.Add(ParseTableRef());
-                while (IsJoinKeyword()) fromClauses.Add(ParseJoin());
+                fromClauses.AddRange(ParseTrailingJoins(preWhere));
             }
         }
 
         var whereConds = new List<AstNode>();
-        if (Peek().IsKeyword("WHERE")) { Advance(); whereConds.AddRange(ParseConditionList(isJoinOn: false)); }
+        if (PeekClause("WHERE", preWhere)) { Advance(); whereConds.AddRange(ParseConditionList(isJoinOn: false)); }
 
-        return new DeleteNode { TargetAlias = targetAlias, Table = table }.Tap(n =>
+        return new DeleteNode { TargetAlias = targetAlias, Table = table, TargetComment = targetComment }.Tap(n =>
         {
             n.FromClauses.AddRange(fromClauses);
             n.WhereConditions.AddRange(whereConds);
+            n.PreFromComments.AddRange(preFrom);
+            n.PreWhereComments.AddRange(preWhere);
         });
     }
 
@@ -2040,6 +2089,20 @@ public sealed class Parser
     /// Like Peek() but also skips standalone comment tokens, so callers can detect a
     /// clause keyword (JOIN, WHERE, ...) that follows one or more comment lines.
     /// </summary>
+    /// <summary>
+    /// True when the next meaningful token is <paramref name="keyword"/>, looking past any
+    /// comments in front of it; the comments are then moved into <paramref name="sink"/> so the
+    /// clause itself can be consumed normally. Peeking at the raw token instead is exactly how a
+    /// comment written before a clause ("delete d /*note*/" or "-- into #tmp") used to hide the
+    /// clause behind it and drop the rest of the statement into unformatted raw text.
+    /// </summary>
+    private bool PeekClause(string keyword, List<string> sink)
+    {
+        if (!PeekPastComments().IsKeyword(keyword)) return false;
+        sink.AddRange(CollectStandaloneComments());
+        return true;
+    }
+
     private Token PeekPastComments()
     {
         int i = _pos;

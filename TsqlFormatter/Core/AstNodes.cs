@@ -144,6 +144,14 @@ public sealed class UpdateNode : AstNode
     /// <summary>FROM clauses (table refs + joins), same shape as SelectStatementNode.</summary>
     public List<AstNode> FromClauses { get; } = new();
     public List<AstNode> WhereConditions { get; } = new();
+    /// <summary>Comment written on the "update …" line itself.</summary>
+    public string? TargetComment { get; set; }
+    /// <summary>Standalone comments between the table and SET.</summary>
+    public List<string> PreSetComments { get; } = new();
+    /// <summary>Standalone comments between the assignments and FROM.</summary>
+    public List<string> PreFromComments { get; } = new();
+    /// <summary>Standalone comments between FROM/JOIN and WHERE.</summary>
+    public List<string> PreWhereComments { get; } = new();
 }
 
 public sealed class AssignmentNode : AstNode
@@ -160,6 +168,12 @@ public sealed class DeleteNode : AstNode
     public TableRefNode? Table { get; init; }          // DELETE FROM tbl
     public List<AstNode> FromClauses { get; } = new();
     public List<AstNode> WhereConditions { get; } = new();
+    /// <summary>Comment written on the "delete …" line itself.</summary>
+    public string? TargetComment { get; set; }
+    /// <summary>Standalone comments between the target and FROM.</summary>
+    public List<string> PreFromComments { get; } = new();
+    /// <summary>Standalone comments between FROM/JOIN and WHERE.</summary>
+    public List<string> PreWhereComments { get; } = new();
 }
 
 // ─── SELECT columns ──────────────────────────────────────────────────────────

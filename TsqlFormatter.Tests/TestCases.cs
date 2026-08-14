@@ -1194,6 +1194,43 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── cmt-safety: a comment must not hide a DELETE/UPDATE clause ────────
+        new TestCase {
+            Rule = "cmt-safety", Name = "block comment on the delete line does not hide the from",
+            Input    = "delete d  /* !!! */\nfrom webcar.dbo.t d\nwhere d.mm = @mm\n and d.yy = @yy",
+            Expected = "delete d/* !!! */\nfrom webcar.dbo.t as d\nwhere\n\td.mm = @mm\n\tand d.yy = @yy",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "line comment on the delete line does not hide the from",
+            Input    = "delete d --note\nfrom t d\nwhere d.mm = @mm",
+            Expected = "delete d\t\t--note\nfrom t as d\nwhere\n\td.mm = @mm",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "comment on the delete from line does not hide the where",
+            Input    = "delete from t  /* zzz */\nwhere x = 1",
+            Expected = "delete from t/* zzz */\nwhere\n\tx = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "commented-out clauses inside a delete keep their lines",
+            Input    = "delete d\n--from t2 d\nfrom t d\ninner join u on u.id = d.id\n--note\nwhere d.a = 1",
+            Expected = "delete d\n--from t2 d\nfrom t as d\n\tinner join u\n\t\ton u.id = d.id\n--note\nwhere\n\td.a = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "comment on the update line does not hide the set",
+            Input    = "update t  /* zzz */\nset a = 1\nwhere x = 1",
+            Expected = "update t/* zzz */\nset\n\ta = 1\nwhere\n\tx = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "commented-out clauses inside an update keep their lines",
+            Input    = "update t\n--set b = 2\nset a = 1\nfrom t\ninner join u on u.id = t.id\n--note\nwhere x = 1",
+            Expected = "update t\n--set b = 2\nset\n\ta = 1\nfrom t\n\tinner join u\n\t\ton u.id = t.id\n--note\nwhere\n\tx = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "comment after a delete belongs to the next statement",
+            Input    = "delete d\nfrom t d\n\n--next statement\n\nselect 1",
+            Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
+        },
+
         // ── fromlist: several comma-separated FROM sources ────────────────────
         new TestCase {
             Rule = "fromlist", Name = "three sources: first on the from line, the rest one tab in",

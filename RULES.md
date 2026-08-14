@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~81 · Тестов: 213/213 · Движок: .NET 5
+- Правил: ~81 · Тестов: 220/220 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -307,6 +307,42 @@ select
 from dbo.Users
 where
 	Status = 1
+```
+
+Отдельная разновидность той же проблемы — комментарий **перед ключевым словом клаузы**
+(`from`, `where`, `set`). Проверка «а дальше идёт `from`?» смотрит сквозь комментарии, поэтому
+комментарий больше не прячет за собой клаузу. Комментарий, написанный на строке самого
+оператора, там и остаётся; написанный на отдельной строке — сохраняет свою строку.
+
+```sql
+-- вход
+delete d  /* !!!!!!!! */
+from webcar.dbo.t d
+where d.mm = @mm
+ and d.yy = @yy
+-- результат
+delete d/* !!!!!!!! */
+from webcar.dbo.t as d
+where
+	d.mm = @mm
+	and d.yy = @yy
+```
+
+```sql
+-- вход
+update t
+--set b = 2
+set a = 1
+--note
+where x = 1
+-- результат
+update t
+--set b = 2
+set
+	a = 1
+--note
+where
+	x = 1
 ```
 
 ### `parse-safety` — Graceful degradation: «не смог — не трогаю»

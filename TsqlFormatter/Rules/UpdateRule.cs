@@ -25,8 +25,12 @@ public sealed class UpdateRule : IFormatterRule
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new System.Text.StringBuilder();
 
-        sb.Append($"{tabs}update {RuleHelpers.EmitTableRef(upd.Table, engine, indent)}\n");
-        sb.Append($"{tabs}set");
+        sb.Append($"{tabs}update {RuleHelpers.EmitTableRef(upd.Table, engine, indent)}");
+        // A comment on the update line stays on it; comments written on their own line before
+        // SET keep their own lines. Neither may hide the SET behind it.
+        if (upd.TargetComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(upd.TargetComment));
+        foreach (var c in upd.PreSetComments) sb.Append($"\n{tabs}{c}");
+        sb.Append($"\n{tabs}set");
 
         for (int i = 0; i < upd.Assignments.Count; i++)
         {
@@ -38,6 +42,8 @@ public sealed class UpdateRule : IFormatterRule
         }
 
         // FROM / JOINs
+        foreach (var c in upd.PreFromComments)
+            sb.Append($"\n{tabs}{c}");
         if (upd.FromClauses.Count > 0)
         {
             sb.Append($"\n{tabs}from");
@@ -49,6 +55,10 @@ public sealed class UpdateRule : IFormatterRule
                     sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
             }
         }
+
+        // Comments written between the FROM/JOIN block and WHERE keep their own lines.
+        foreach (var c in upd.PreWhereComments)
+            sb.Append($"\n{tabs}{c}");
 
         // WHERE — same flat layout as SELECT (rule where-or: no outer parens are added,
         // and/or start their lines, source paren groups are preserved by the parser).
