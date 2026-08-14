@@ -926,6 +926,18 @@ public static class TestCases
             Expected = "select\n\ta,/*x*/\n\tb\nfrom t",
         },
 
+        // ── NOT belongs to the operator: losing it inverts the condition ─────
+        new TestCase {
+            Rule = "isnull", Name = "not like keeps its negation",
+            Input    = "select u.Sid from Users as u where u.UserName not like '%CRP_%'\nand u.UserName not like '%Domain%'",
+            Expected = "select\n\tu.Sid\nfrom Users as u\nwhere\n\tu.UserName not like '%CRP_%'\n\tand u.UserName not like '%Domain%'",
+        },
+        new TestCase {
+            Rule = "isnull", Name = "not between keeps its negation",
+            Input    = "select a from t where x not between 1 and 5 and y between 2 and 3",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx not between 1 and 5\n\tand y between 2 and 3",
+        },
+
         // ── the line break around a /* */ comment follows the source ─────────
         new TestCase {
             Rule = "blockcmt", Name = "break after a single-line comment is kept",

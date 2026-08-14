@@ -1240,8 +1240,9 @@ public sealed class Parser
             if (next.IsKeyword("IN"))   { Advance(); Advance(); Expect(TokenType.LeftParen);
                 if (PeekPastComments().IsKeyword("SELECT")) { var openC = TryTakeSameLineInlineComment(); var sub = ParseSelectOrSet(null); Expect(TokenType.RightParen); return new InExprNode { Left = left, Negated = true, SubQuery = new SubQueryNode { Select = sub, OpenComment = openC } }; }
                 var v = ParseInList(); Expect(TokenType.RightParen); return new InExprNode { Left = left, Negated = true }.Tap(n => n.Values.AddRange(v)); }
-            if (next.IsKeyword("LIKE")) { Advance(); Advance(); return new LikeExprNode { Left = left, Pattern = ParseAdditive() }; }
-            if (next.IsKeyword("BETWEEN")) { Advance(); Advance(); var lo = ParseAdditive(); Expect(TokenType.Keyword, "AND"); var hi = ParseAdditive(); return new BetweenExprNode { Left = left, Low = lo, High = hi }; }
+            // The NOT belongs to the operator — losing it inverts the condition.
+            if (next.IsKeyword("LIKE")) { Advance(); Advance(); return new LikeExprNode { Left = left, Pattern = ParseAdditive(), Negated = true }; }
+            if (next.IsKeyword("BETWEEN")) { Advance(); Advance(); var lo = ParseAdditive(); Expect(TokenType.Keyword, "AND"); var hi = ParseAdditive(); return new BetweenExprNode { Left = left, Low = lo, High = hi, Negated = true }; }
         }
         if (op.IsKeyword("IN"))     { Advance(); Expect(TokenType.LeftParen);
             if (PeekPastComments().IsKeyword("SELECT")) { var openC = TryTakeSameLineInlineComment(); var sub = ParseSelectOrSet(null); Expect(TokenType.RightParen); return new InExprNode { Left = left, SubQuery = new SubQueryNode { Select = sub, OpenComment = openC } }; }

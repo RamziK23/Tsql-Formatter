@@ -229,10 +229,11 @@ internal static class RuleHelpers
     }
 
     private static string EmitBetween(BetweenExprNode bt, FormatterEngine engine, int indent)
-        => $"{EmitExpr(bt.Left, engine, indent)} between {EmitExpr(bt.Low, engine, indent)} and {EmitExpr(bt.High, engine, indent)}";
+        => $"{EmitExpr(bt.Left, engine, indent)} {(bt.Negated ? "not between" : "between")} "
+         + $"{EmitExpr(bt.Low, engine, indent)} and {EmitExpr(bt.High, engine, indent)}";
 
     private static string EmitLike(LikeExprNode lk, FormatterEngine engine, int indent)
-        => $"{EmitExpr(lk.Left, engine, indent)} like {EmitExpr(lk.Pattern, engine, indent)}";
+        => $"{EmitExpr(lk.Left, engine, indent)} {(lk.Negated ? "not like" : "like")} {EmitExpr(lk.Pattern, engine, indent)}";
 
     private static string EmitIsNull(IsNullExprNode isn, FormatterEngine engine, int indent)
         => $"{EmitExpr(isn.Left, engine, indent)} is{(isn.IsNotNull ? " not" : "")} null";

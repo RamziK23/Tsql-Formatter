@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~80 · Тестов: 202/202 · Движок: .NET 5
+- Правил: ~80 · Тестов: 204/204 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -850,7 +850,20 @@ where
 ```
 
 ### `isnull` / `2.4` — IS [NOT] NULL, IN, NOT IN, LIKE, BETWEEN
-`in (subquery)` разворачивает подзапрос на новую строку с отступом.
+`in (subquery)` разворачивает подзапрос на новую строку с отступом. Отрицание — часть оператора и
+сохраняется целиком: `not in`, `not like`, `not between` (потерянный `not` перевернул бы условие).
+
+```sql
+-- вход
+select a from t where x not between 1 and 5 and z not like 'a%'
+-- результат
+select
+	a
+from t
+where
+	x not between 1 and 5
+	and z not like 'a%'
+```
 
 ```sql
 -- вход

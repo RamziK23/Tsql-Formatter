@@ -284,12 +284,16 @@ public sealed class BetweenExprNode : AstNode
     public AstNode Left { get; init; } = null!;
     public AstNode Low { get; init; } = null!;
     public AstNode High { get; init; } = null!;
+    /// <summary>True for NOT BETWEEN. Dropping it would invert the condition.</summary>
+    public bool Negated { get; init; }
 }
 
 public sealed class LikeExprNode : AstNode
 {
     public AstNode Left { get; init; } = null!;
     public AstNode Pattern { get; init; } = null!;
+    /// <summary>True for NOT LIKE. Dropping it would invert the condition.</summary>
+    public bool Negated { get; init; }
 }
 
 public sealed class IsNullExprNode : AstNode
