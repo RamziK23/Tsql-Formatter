@@ -162,6 +162,25 @@ public static class TestRunner
         string tokColor = tokFailed == 0 ? Green : Red;
         Console.WriteLine($"{tokColor}identifier preservation: {tokChecked - tokFailed}/{tokChecked} intact{Reset}");
 
+        // ── Line endings: the formatter must not add a trailing newline ──────
+        // The output replaces the user's selection in SSMS, so a line break the selection did
+        // not have shows up there as an added empty line.
+        int endChecked = 0, endFailed = 0;
+        foreach (var tc in cases)
+        {
+            if (tc.Input.EndsWith("\n") || tc.Input.EndsWith("\r")) continue;
+            string outp;
+            try { outp = Format(tc.Input); } catch { continue; }
+            endChecked++;
+            if (outp.EndsWith("\n") || outp.EndsWith("\r"))
+            {
+                endFailed++;
+                Console.WriteLine($"{Red}● trailing newline added: {tc.Rule} / {tc.Name}{Reset}");
+            }
+        }
+        string endColor = endFailed == 0 ? Green : Red;
+        Console.WriteLine($"{endColor}line endings: {endChecked - endFailed}/{endChecked} unchanged{Reset}");
+
         // ── Comment robustness: a comment between ANY two tokens must stay harmless ──
         // T-SQL allows a comment anywhere between two tokens, and the parser cannot be taught
         // every one of those places by hand — so every test input is re-run with a comment
@@ -228,7 +247,7 @@ public static class TestRunner
 
         // ── Summary ───────────────────────────────────────────────────────────
         int total = passed + failed;
-        bool ok = failed == 0 && idemFailed == 0 && tokFailed == 0 && unsafeCount == 0;
+        bool ok = failed == 0 && idemFailed == 0 && tokFailed == 0 && unsafeCount == 0 && endFailed == 0;
         string color = ok ? Green : Red;
         Console.WriteLine($"\n{color}═══ {passed}/{total} passed, {failed} failed ═══{Reset}\n");
         return ok ? 0 : 1;

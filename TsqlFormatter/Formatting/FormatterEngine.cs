@@ -30,8 +30,8 @@ public sealed class FormatterEngine
             var fragment = new Parser(new Lexer(source).Tokenize()).ParseFragment();
             if (fragment != null)
             {
-                var frag = engine.Format(fragment).TrimEnd() + "\n";
-                return IsFaithful(source, frag) ? frag : source;
+                var frag = engine.Format(fragment).TrimEnd();
+                return IsFaithful(source, frag) ? EndLike(source, frag) : source;
             }
 
             // Fall back to full-statement parsing.
@@ -51,11 +51,11 @@ public sealed class FormatterEngine
             // every comment hoisted above its statement — a coarser but always-safe placement.
             // If even that is not faithful, the source comes back untouched, the same graceful
             // degradation as a parse failure.
-            if (IsFaithful(source, text)) return text;
+            if (IsFaithful(source, text)) return EndLike(source, text);
 
             var hoisted = engine.FormatScript(
                 new Parser(new Lexer(source).Tokenize(), hoistComments: true).Parse());
-            return IsFaithful(source, hoisted) ? hoisted : source;
+            return IsFaithful(source, hoisted) ? EndLike(source, hoisted) : source;
         }
         catch (ParseException)
         {
@@ -63,6 +63,16 @@ public sealed class FormatterEngine
             // rather than emit desynchronized/broken SQL.
             return source;
         }
+    }
+
+    /// <summary>
+    /// Ends the result the way the source ended. A selection that did not finish with a line break
+    /// must not gain one — pasted back over the selection it would show up as an added empty line.
+    /// </summary>
+    private static string EndLike(string source, string result)
+    {
+        var body = result.TrimEnd('\n', '\r');
+        return source.EndsWith("\n") || source.EndsWith("\r") ? body + "\n" : body;
     }
 
     /// <summary>
