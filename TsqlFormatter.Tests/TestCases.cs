@@ -926,6 +926,23 @@ public static class TestCases
             Expected = "select\n\ta,/*x*/\n\tb\nfrom t",
         },
 
+        // ── a comment between the column list and INTO/FROM ─────────────────
+        new TestCase {
+            Rule = "linecmt", Name = "commented-out into between the columns and from",
+            Input    = "select d.group_id\n--  into #group_by_org\nfrom t as d\nwhere d.id = 1",
+            Expected = "select\n\td.group_id\n--  into #group_by_org\nfrom t as d\nwhere\n\td.id = 1",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "comment before into keeps the into clause",
+            Input    = "select a\n--note\ninto #x\nfrom t",
+            Expected = "select\n\ta\n--note\ninto #x\nfrom t",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "commented-out into inside a subquery",
+            Input    = "select a from t where g in (select d.id\n--  into #tmp\nfrom u as d\nwhere d.x = 1)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tg in (\n\t\tselect\n\t\t\td.id\n\t\t--  into #tmp\n\t\tfrom u as d\n\t\twhere\n\t\t\td.x = 1\n\t)",
+        },
+
         // ── NOT belongs to the operator: losing it inverts the condition ─────
         new TestCase {
             Rule = "isnull", Name = "not like keeps its negation",

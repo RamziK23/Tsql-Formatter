@@ -72,6 +72,10 @@ public sealed class SelectRule : IFormatterRule
                 sb.Append($"\n{lineLead}{tabs}\t{blockLead}{colStr}{alias}{comma}{comment}");
         }
 
+        // Comments written between the column list and INTO/FROM stay there.
+        foreach (var c in sel.PreFromComments)
+            sb.Append($"\n{tabs}{c}");
+
         // ── INTO (SELECT ... INTO #tbl) ───────────────────────────────────────
         if (sel.IntoTable != null)
             sb.Append($"\n{tabs}into {sel.IntoTable}");

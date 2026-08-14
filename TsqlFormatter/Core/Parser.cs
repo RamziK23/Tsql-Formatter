@@ -660,6 +660,12 @@ public sealed class Parser
         if (ctes != null) node.CteDefinitions.AddRange(ctes);
         node.Columns.AddRange(ParseSelectColumns());
         // SELECT ... INTO #tbl / ##global / schema.table / [quoted]
+        // A comment between the column list and INTO/FROM (a commented-out clause, typically)
+        // must not hide the clause behind it: peeked at directly, the FROM went unseen and the
+        // statement fell apart. Kept to be rendered on its own line where it was written.
+        if (PeekPastComments().IsKeyword("INTO") || PeekPastComments().IsKeyword("FROM"))
+            node.PreFromComments.AddRange(CollectStandaloneComments());
+
         if (Peek().IsKeyword("INTO"))
         {
             Advance();
