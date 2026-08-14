@@ -16,6 +16,12 @@ public abstract class AstNode
     public string? StatementTrailingComment { get; set; }
 
     /// <summary>
+    /// CTEs declared in front of this statement: "with a as (…), b as (…) select|insert|update|
+    /// delete …". Held on the base node because every one of those statements can carry them.
+    /// </summary>
+    public List<AstNode> CteDefinitions { get; } = new();
+
+    /// <summary>
     /// Comments that turned up where an operand was expected ("where x = --note\n 1"). No
     /// expression can hold them, so they are lifted to the statement and rendered on their own
     /// line(s) above it — moved, but never lost, and never left where they would comment out code.
@@ -91,7 +97,6 @@ public sealed class SelectStatementNode : AstNode
     /// <summary>HAVING conditions: first item without operator, the rest with and/or.</summary>
     public List<AstNode> HavingConditions { get; } = new();
     public List<AstNode> OrderByColumns { get; } = new();
-    public List<AstNode> CteDefinitions { get; } = new();
     /// <summary>A -- comment written on the SELECT line itself; it stays on that line.</summary>
     public string? HeaderComment { get; set; }
     /// <summary>Standalone comments between the column list and INTO/FROM — a commented-out

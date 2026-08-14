@@ -543,6 +543,28 @@ internal static class RuleHelpers
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Renders the "with a as ( … ), b as ( … )" header a statement carries, ending in a newline
+    /// so the statement itself starts on the next line. Empty when there are no CTEs. Shared by
+    /// SELECT, INSERT, UPDATE and DELETE — all four can be headed by a CTE list.
+    /// </summary>
+    public static string EmitCteHeader(AstNode node, FormatterEngine engine, int indent)
+    {
+        if (node.CteDefinitions.Count == 0) return "";
+        var tabs = Tabs(indent);
+        var sb = new System.Text.StringBuilder($"{tabs}with ");
+        for (int i = 0; i < node.CteDefinitions.Count; i++)
+        {
+            var cte = (CteDefinitionNode)node.CteDefinitions[i];
+            sb.Append($"{cte.Name.Value} as (\n");
+            sb.Append(engine.Format(cte.Body, indent + 1));
+            sb.Append($"\n{tabs})");
+            if (i < node.CteDefinitions.Count - 1) sb.Append($",\n{tabs}");
+        }
+        sb.Append("\n");
+        return sb.ToString();
+    }
+
     // ─── Shared JOIN formatter ───────────────────────────────────────────────
 
     /// <summary>

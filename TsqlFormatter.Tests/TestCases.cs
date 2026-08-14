@@ -1194,6 +1194,23 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── cte: a CTE list can head INSERT / UPDATE / DELETE too ─────────────
+        new TestCase {
+            Rule = "cte", Name = "cte in front of an insert ... select",
+            Input    = ";with corr as (select * from #dr as dr where dr.groupID=4)\ninsert into #dr (dt, summa)\nselect corr.dt, sum(corr.summa) as summa\nfrom corr as corr\ngroup by corr.dt",
+            Expected = ";with corr as (\n\tselect\n\t\t*\n\tfrom #dr as dr\n\twhere\n\t\tdr.groupID = 4\n)\ninsert into #dr (\n\tdt,\n\tsumma\n)\nselect\n\tcorr.dt,\n\tsum(corr.summa) as summa\nfrom corr as corr\ngroup by\n\tcorr.dt",
+        },
+        new TestCase {
+            Rule = "cte", Name = "cte in front of an update",
+            Input    = "with c as (select id from t)\nupdate u\nset a = 1\nfrom u\ninner join c on c.id = u.id",
+            Expected = "with c as (\n\tselect\n\t\tid\n\tfrom t\n)\nupdate u\nset\n\ta = 1\nfrom u\n\tinner join c\n\t\ton c.id = u.id",
+        },
+        new TestCase {
+            Rule = "cte", Name = "cte in front of a delete",
+            Input    = "with c as (select id from t)\ndelete d\nfrom u as d\ninner join c on c.id = d.id",
+            Expected = "with c as (\n\tselect\n\t\tid\n\tfrom t\n)\ndelete d\nfrom u as d\n\tinner join c\n\t\ton c.id = d.id",
+        },
+
         // ── pivot: PIVOT / UNPIVOT laid out as a block ────────────────────────
         new TestCase {
             Rule = "pivot", Name = "pivot over a derived table, one IN value per line",

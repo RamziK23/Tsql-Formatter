@@ -23,19 +23,7 @@ public sealed class SelectRule : IFormatterRule
             sb.Append($"{tabs}{c}\n");
 
         // ── CTEs ──────────────────────────────────────────────────────────────
-        if (sel.CteDefinitions.Count > 0)
-        {
-            sb.Append($"{tabs}with ");
-            for (int i = 0; i < sel.CteDefinitions.Count; i++)
-            {
-                var cte = (CteDefinitionNode)sel.CteDefinitions[i];
-                sb.Append($"{cte.Name.Value} as (\n");
-                sb.Append(engine.Format(cte.Body, indent + 1));
-                sb.Append($"\n{tabs})");
-                if (i < sel.CteDefinitions.Count - 1) sb.Append($",\n{tabs}");
-            }
-            sb.Append("\n");
-        }
+        sb.Append(RuleHelpers.EmitCteHeader(sel, engine, indent));
 
         // ── SELECT header ─────────────────────────────────────────────────────
         var header = new System.Text.StringBuilder($"{tabs}select");

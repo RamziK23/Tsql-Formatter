@@ -569,6 +569,12 @@ public sealed class Parser
             if (!PeekIs(TokenType.Comma)) break;
             Advance();
         }
+        // A CTE list can head an INSERT / UPDATE / DELETE just as well as a SELECT. Insisting on
+        // SELECT here is what made "with … insert into … select …" fail to parse, leaving the
+        // whole script unformatted.
+        if (Peek().IsKeyword("INSERT")) return ParseInsert().Tap(n => n.CteDefinitions.AddRange(ctes));
+        if (Peek().IsKeyword("UPDATE")) return ParseUpdate().Tap(n => n.CteDefinitions.AddRange(ctes));
+        if (Peek().IsKeyword("DELETE")) return ParseDelete().Tap(n => n.CteDefinitions.AddRange(ctes));
         return ParseSelectOrSet(ctes);
     }
 

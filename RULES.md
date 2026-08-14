@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~83 · Тестов: 231/231 · Движок: .NET 5
+- Правил: ~83 · Тестов: 234/234 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1427,6 +1427,38 @@ with cte as (
 select
 	c.[Id]
 from cte as c
+```
+
+Список CTE может стоять не только перед `select`, но и перед `insert`, `update`, `delete` —
+заголовок `with … as ( … )` печатается так же, а сам оператор начинается со следующей строки.
+Раньше после CTE ожидался строго `select`, поэтому `with … insert into … select …` не
+разбирался и такой скрипт не форматировался целиком.
+
+```sql
+-- вход
+;with corr as (select * from #dr as dr where dr.groupID=4)
+insert into #dr (dt, summa)
+select corr.dt, sum(corr.summa) as summa
+from corr as corr
+group by corr.dt
+-- результат
+;with corr as (
+	select
+		*
+	from #dr as dr
+	where
+		dr.groupID = 4
+)
+insert into #dr (
+	dt,
+	summa
+)
+select
+	corr.dt,
+	sum(corr.summa) as summa
+from corr as corr
+group by
+	corr.dt
 ```
 
 ### `if` — IF / ELSE / WHILE: первое условие на строке ключевого слова, тело на следующей строке

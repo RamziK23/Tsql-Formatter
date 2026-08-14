@@ -22,6 +22,8 @@ public sealed class DeleteRule : IFormatterRule
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new System.Text.StringBuilder();
 
+        sb.Append(RuleHelpers.EmitCteHeader(del, engine, indent));
+
         // True once a "from" has been written, so the joins of a DELETE FROM don't get a second one.
         bool fromWritten = false;
         if (del.Table != null)

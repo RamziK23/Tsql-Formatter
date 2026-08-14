@@ -25,6 +25,7 @@ public sealed class UpdateRule : IFormatterRule
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new System.Text.StringBuilder();
 
+        sb.Append(RuleHelpers.EmitCteHeader(upd, engine, indent));
         sb.Append($"{tabs}update {RuleHelpers.EmitTableRef(upd.Table, engine, indent)}");
         // A comment on the update line stays on it; comments written on their own line before
         // SET keep their own lines. Neither may hide the SET behind it.

@@ -24,6 +24,7 @@ public sealed class InsertRule : IFormatterRule
         var tabs = RuleHelpers.Tabs(indent);
         var sb   = new System.Text.StringBuilder();
 
+        sb.Append(RuleHelpers.EmitCteHeader(ins, engine, indent));
         sb.Append($"{tabs}insert into {RuleHelpers.EmitTableRef(ins.Table, engine, indent)}");
 
         // Column list: opening paren after a space (like create table), each column on its own
