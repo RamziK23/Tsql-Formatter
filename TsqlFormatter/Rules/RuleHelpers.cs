@@ -608,6 +608,27 @@ internal static class RuleHelpers
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Renders a column definition list — CREATE TABLE's body and a table variable's type — one
+    /// column per line at +1 tab, each line ending in a newline. The comma closes the column
+    /// BEFORE its comment, so the separator is never commented out.
+    /// </summary>
+    public static string EmitColumnDefs(System.Collections.Generic.List<ColumnDefNode> columns, int indent)
+    {
+        var tabs = Tabs(indent);
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var col   = columns[i];
+            var comma = i < columns.Count - 1 ? "," : "";
+            foreach (var c in col.LeadingComments) sb.Append($"{tabs}\t{c}\n");
+            var comment = col.TrailingComment != null ? TrailingCommentSuffix(col.TrailingComment) : "";
+            // Column name preserves original case; definition kept as-is
+            sb.Append($"{tabs}\t{col.Name} {col.Definition}{comma}{comment}\n");
+        }
+        return sb.ToString();
+    }
+
     // ─── Shared JOIN formatter ───────────────────────────────────────────────
 
     /// <summary>

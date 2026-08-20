@@ -52,6 +52,9 @@ public sealed class InsertRule : IFormatterRule
                 var vals = string.Join(", ", vn.Rows[r].Select(v => RuleHelpers.EmitExpr(v, engine, indent)));
                 sb.Append($"\n{tabs}\t({vals})");
                 if (r < vn.Rows.Count - 1) sb.Append(",");
+                // The row's comment follows its comma, never precedes it.
+                if (r < vn.RowComments.Count && vn.RowComments[r] != null)
+                    sb.Append(RuleHelpers.TrailingCommentSuffix(vn.RowComments[r]!));
             }
         }
         else if (ins.Source != null)

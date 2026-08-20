@@ -39,7 +39,10 @@ public sealed class UpdateRule : IFormatterRule
             var target = RuleHelpers.EmitExpr(a.Target, engine, indent + 1);
             var value  = RuleHelpers.EmitExpr(a.Value,  engine, indent + 1);
             sb.Append($"\n{tabs}\t{target} = {value}");
+            // The comma closes the assignment BEFORE its comment — inside the comment it would be
+            // commented out, leaving two assignments with no separator between them.
             if (i < upd.Assignments.Count - 1) sb.Append(",");
+            if (a.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(a.TrailingComment));
         }
 
         // FROM / JOINs

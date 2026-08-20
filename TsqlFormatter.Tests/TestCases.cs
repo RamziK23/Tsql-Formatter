@@ -45,7 +45,7 @@ public static class TestCases
         new TestCase {
             Rule = "function", Name = "create function: paren on name line, params/if/return formatted, no hang",
             Input    = "create function dbo.f(@a int) returns int as begin if @a is null return 0; return @a; end go",
-            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif @a is null\n\treturn 0\n\n\treturn @a\n\nend\n\nGO",
+            Expected = "create function dbo.f (\n\t@a int\n)\nreturns int\nas\nbegin\n\n\tif @a is null\n\treturn 0\n\n\treturn @a;\n\nend\n\nGO",
         },
         new TestCase {
             Rule = "function", Name = "compound assignment += stays a single operator",
@@ -831,11 +831,16 @@ public static class TestCases
             Expected = "delete from t\nwhere\n\ta = 1\n\tand b = 2\n\tor c = 3",
         },
 
-        // ── DECLARE @t table (...) keeps the space before the column list ─────
+        // ── DECLARE @t table (...) is laid out like create table ──────────────
         new TestCase {
-            Rule = "declare", Name = "table variable: space between table and its column list",
+            Rule = "declare", Name = "table variable: one column per line, like create table",
             Input    = "declare @t table (id int, name varchar(50))",
-            Expected = "declare @t table (id int, name varchar(50))",
+            Expected = "declare @t table (\n\tid int,\n\tname varchar(50)\n)",
+        },
+        new TestCase {
+            Rule = "declare", Name = "table variable keeps its columns' comments",
+            Input    = "declare @tbl table\n(\nid  int,          -- ключ\nval nvarchar(100) -- значение\n);",
+            Expected = "declare @tbl table (\n\tid int,\t\t-- ключ\n\tval nvarchar(100)\t\t-- значение\n);",
         },
 
         // ── First argument on the keyword line: declare / assignment select / if ──
@@ -1192,6 +1197,38 @@ public static class TestCases
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
+        },
+
+        // ── comments that used to derail a procedure body ─────────────────────
+        new TestCase {
+            Rule = "cmt-safety", Name = "leading-comma SET list: comma before the comment",
+            Input    = "update ol\n   SET ol.qty = ol.qty + 1 -- инкремент\n     , ol.note = N'x'\nfrom dbo.OrderLine as ol\nwhere ol.id = 1",
+            Expected = "update ol\nset\n\tol.qty = ol.qty + 1,\t\t-- инкремент\n\tol.note = N'x'\nfrom dbo.OrderLine as ol\nwhere\n\tol.id = 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "create table keeps its columns' comments",
+            Input    = "create table #t (\nid int,          -- ключ\nval nvarchar(100) -- значение\n)",
+            Expected = "create table #t (\n\tid int,\t\t-- ключ\n\tval nvarchar(100)\t\t-- значение\n)",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "values rows keep their comments, comma first",
+            Input    = "insert into @tbl (id, val)\nvalues\n(1, N'один'),   -- первая\n(2, N'два');    -- вторая",
+            Expected = "insert into @tbl (\n\tid,\n\tval\n)\nvalues\n\t(1, N'один'),\t\t-- первая\n\t(2, N'два');\t\t-- вторая",
+        },
+        new TestCase {
+            Rule = "if", Name = "comment on the else line stays on it",
+            Input    = "if @mode = 0\nprint 1;\nelse -- режим записи\nprint 2;",
+            Expected = "if @mode = 0\nprint 1;\nelse\t\t-- режим записи\nprint 2;",
+        },
+        new TestCase {
+            Rule = "semi", Name = "';' kept inside a block, and continue/break lowercased",
+            Input    = "while @i < 10\nbegin\nSET @i += 1; -- шаг\nIF @i = 5 CONTINUE;\nend;",
+            Expected = "while @i < 10\nbegin\n\n\tset @i += 1;\t\t-- шаг\n\n\tif @i = 5\n\tcontinue;\n\nend;",
+        },
+        new TestCase {
+            Rule = "semi", Name = "begin/commit transaction keep their ';' and comment",
+            Input    = "begin transaction; -- начало\ncommit transaction; -- фиксация",
+            Expected = "begin transaction;\t\t-- начало\ncommit transaction;\t\t-- фиксация",
         },
 
         // ── 2.5 case: comments inside a CASE keep their places ────────────────

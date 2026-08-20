@@ -28,11 +28,21 @@ public sealed class DeclareRule : IFormatterRule
         for (int i = 0; i < d.Variables.Count; i++)
         {
             var v        = d.Variables[i];
+            var lead     = i == 0 ? " " : $"\n{tabs}\t";
+            // A table variable's type is a column list, laid out like CREATE TABLE.
+            if (v.TableColumns != null)
+            {
+                sb.Append($"{lead}{v.Variable.Value} table (\n");
+                sb.Append(RuleHelpers.EmitColumnDefs(v.TableColumns, indent));
+                sb.Append($"{tabs})");
+                if (i < d.Variables.Count - 1) sb.Append(",");
+                if (v.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(v.TrailingComment));
+                continue;
+            }
             var dataType = RuleHelpers.EmitTypeTokens(v.DataType);
             var init     = v.Initializer != null
                 ? $" = {RuleHelpers.EmitExpr(v.Initializer, engine, indent + 1)}"
                 : "";
-            var lead     = i == 0 ? " " : $"\n{tabs}\t";
             sb.Append($"{lead}{v.Variable.Value} {dataType}{init}");
             if (i < d.Variables.Count - 1) sb.Append(",");
             if (v.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(v.TrailingComment));

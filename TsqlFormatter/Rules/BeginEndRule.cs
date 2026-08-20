@@ -57,6 +57,8 @@ public sealed class BeginEndRule : IFormatterRule
                     pendingComment = null;
                     pendingSep = "\n";
                 }
+                // The ';' the author wrote goes back where it was, before any trailing comment.
+                if (stmt.TrailingSemicolon) formatted += ";";
                 // A same-line trailing comment sticks to the statement's last line.
                 if (stmt.StatementTrailingComment != null)
                     formatted = AppendTrailing(formatted, stmt.StatementTrailingComment);

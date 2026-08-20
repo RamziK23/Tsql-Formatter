@@ -79,6 +79,8 @@ public sealed class ControlFlowRule : IFormatterRule
                 if (iff.Else != null)
                 {
                     sb.Append($"\n{tabs}else");
+                    if (iff.ElseComment != null)
+                        sb.Append(RuleHelpers.LineClosingCommentSuffix(iff.ElseComment));
                     sb.Append(RuleHelpers.EmitBranchBody(iff.Else, engine, indent));
                 }
                 return sb.ToString();

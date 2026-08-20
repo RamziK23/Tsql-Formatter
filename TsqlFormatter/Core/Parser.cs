@@ -142,11 +142,11 @@ public sealed class Parser
                 // A ';' on the statement's own last line terminates it and stays with it, so the
                 // next statement starts on its own line instead of being run together with this
                 // one. A ';' on a later line is left to the separator loop above.
-                if (stmt is not RawTokensNode) stmt.TrailingSemicolon = TryTakeSameLineSemicolon();
-                // A -- comment on the SAME line as the statement's end is a trailing comment
-                // for THIS statement — keep it attached here rather than letting it migrate
-                // to the following statement as a standalone comment.
-                var trailing = TryTakeSameLineComment();
+                if (stmt is not RawTokensNode) stmt.TrailingSemicolon |= TryTakeSameLineSemicolon();
+                // A comment on the SAME line as the statement's end is a trailing comment for
+                // THIS statement — keep it attached here rather than letting it migrate to the
+                // following statement as a standalone comment.
+                var trailing = TryTakeSameLineInlineComment();
                 if (trailing != null) stmt.StatementTrailingComment = trailing;
                 script.Statements.Add(stmt);
             }
@@ -381,9 +381,16 @@ public sealed class Parser
         Advance(); // IF
         var conds = ParseConditionList(isJoinOn: false);
         var then = ParseStatement();
-        AstNode? elseStmt = null;
-        if (Peek().IsKeyword("ELSE")) { Advance(); elseStmt = ParseStatement(); }
-        var n = new IfNode { Then = then, Else = elseStmt };
+        AstNode? elseStmt = null; string? elseComment = null;
+        if (Peek().IsKeyword("ELSE"))
+        {
+            Advance();
+            // "else -- режим записи" — the comment stays on the else line instead of drifting
+            // down onto the branch body below it.
+            elseComment = TryTakeSameLineInlineComment();
+            elseStmt = ParseStatement();
+        }
+        var n = new IfNode { Then = then, Else = elseStmt, ElseComment = elseComment };
         n.Conditions.AddRange(conds);
         return n;
     }
@@ -406,8 +413,10 @@ public sealed class Parser
         bool ends = t.Type is TokenType.Semicolon or TokenType.EndOfFile
             || t.IsKeyword("END") || t.IsKeyword("ELSE") || IsGoKeyword();
         if (!ends) val = ParseExpression();
-        TryConsume(TokenType.Semicolon);
-        return new ReturnNode { Value = val };
+        // Keep the ';' the author wrote (rule `semi`) rather than swallowing it.
+        var node = new ReturnNode { Value = val };
+        node.TrailingSemicolon = TryConsume(TokenType.Semicolon);
+        return node;
     }
 
     private AstNode ParseSet()
@@ -418,8 +427,11 @@ public sealed class Parser
         if (Peek().Type == TokenType.CompoundAssign) op = Advance().Value;
         else if (PeekIs(TokenType.Equals)) Advance();
         var val = ParseExpression();
-        TryConsume(TokenType.Semicolon);
-        return new SetNode { Target = target, Op = op, Value = val };
+        // The ';' the author wrote is the statement's own (rule `semi`); swallowing it silently
+        // dropped it from the output.
+        var node = new SetNode { Target = target, Op = op, Value = val };
+        node.TrailingSemicolon = TryConsume(TokenType.Semicolon);
+        return node;
     }
 
     /// <summary>True at TRAN / TRANSACTION / DISTRIBUTED (the words that make a BEGIN a
@@ -455,8 +467,13 @@ public sealed class Parser
             && name.Type is TokenType.Identifier or TokenType.QuotedIdentifier or TokenType.Variable
             && !IsGoKeyword())
             raw.Tokens.Add(Advance());
-        // The trailing ';' is left for the statement loop: it both separates statements and
-        // marks a following WITH as needing its ";with" prefix.
+        // A ';' on this line ends the statement and belongs to it (rule `semi`); one on a later
+        // line is left to the statement loop, where it both separates statements and marks a
+        // following WITH as needing its ";with" prefix.
+        int semi = _pos;
+        while (semi < _tokens.Count && _tokens[semi].Type == TokenType.Whitespace) semi++;
+        if (semi < _tokens.Count && _tokens[semi].Type == TokenType.Semicolon)
+        { raw.Tokens.Add(_tokens[semi]); _pos = semi + 1; }
         return raw;
     }
 
@@ -529,6 +546,20 @@ public sealed class Parser
         {
             var variable = Expect(TokenType.Variable);
             var dataType = new List<Token>();
+            // A table variable's type is a column list, not a run of type tokens: read it like
+            // CREATE TABLE's body so each column gets its own line and keeps its comment.
+            if (Peek().IsKeyword("TABLE") && PeekAt(1).Type == TokenType.LeftParen)
+            {
+                Advance(); // table
+                Advance(); // (
+                var tableColumns = new List<ColumnDefNode>();
+                ParseColumnDefs(tableColumns);
+                var tv = new DeclareVarNode { Variable = variable, TableColumns = tableColumns };
+                tv.TrailingComment = TryTakeSameLineInlineComment();
+                node.Variables.Add(tv);
+                // The do-while below consumes the separating comma; nothing more to do here.
+                continue;
+            }
             int typeDepth = 0;
             while (!IsAtEnd())
             {
@@ -831,7 +862,7 @@ public sealed class Parser
     {
         Advance(); // VALUES
         var valuesNode = new ValuesNode();
-        do
+        while (true)
         {
             Expect(TokenType.LeftParen);
             var row = new List<AstNode>();
@@ -842,7 +873,12 @@ public sealed class Parser
             }
             Expect(TokenType.RightParen);
             valuesNode.Rows.Add(row);
-        } while (PeekIs(TokenType.Comma) && AdvanceAndTrue());
+            // A comment annotating the row stays with the row; the comma is emitted before it.
+            bool more = PeekIs(TokenType.Comma);
+            if (more) Advance();
+            valuesNode.RowComments.Add(TryTakeSameLineInlineComment());
+            if (!more) break;
+        }
         return valuesNode;
     }
 
@@ -879,13 +915,30 @@ public sealed class Parser
         Expect(TokenType.Keyword, "SET");
 
         var assignments = new List<AssignmentNode>();
-        do
+        while (true)
         {
             var target = ParsePrimary();
             Expect(TokenType.Equals);
             var value = ParseExpression();
-            assignments.Add(new AssignmentNode { Target = target, Value = value });
-        } while (PeekIs(TokenType.Comma) && AdvanceAndTrue());
+            // The comment belongs to the assignment, not to its value: left inside the value, the
+            // separating comma was emitted AFTER the -- comment and ended up commented out —
+            // which cost the script its formatting entirely.
+            var assignComment = TakeLineCommentFrom(value) ?? TryTakeSameLineInlineComment();
+            // Leading-comma style puts the separator at the start of the next line:
+            //   set a = 1 -- note
+            //     , b = 2
+            bool more = PeekPastComments().Type == TokenType.Comma;
+            if (more)
+            {
+                // Anything else standing between the assignment and its comma is a standalone
+                // comment: park it above the statement rather than let the comma swallow it.
+                _pendingComments.AddRange(CollectStandaloneComments());
+                Advance(); // ,
+                assignComment ??= TryTakeSameLineInlineComment();
+            }
+            assignments.Add(new AssignmentNode { Target = target, Value = value, TrailingComment = assignComment });
+            if (!more) break;
+        }
 
         var fromClauses = new List<AstNode>();
         if (PeekClause("FROM", preFrom))
@@ -1726,6 +1779,10 @@ public sealed class Parser
         { var s = l.TrailingComment; l.TrailingComment = null; return s; }
         if (val is ColumnRefNode c && c.TrailingComment != null && c.TrailingComment.StartsWith("--"))
         { var s = c.TrailingComment; c.TrailingComment = null; return s; }
+        // The comment sits on the LAST operand of a compound expression ("ol.qty + 1 -- note"):
+        // it still closes the whole line, so it belongs to the item, not to that operand.
+        if (val is BinaryExprNode b)   return TakeLineCommentFrom(b.Right);
+        if (val is UnaryExprNode u)    return TakeLineCommentFrom(u.Operand);
         return null;
     }
 
@@ -1973,8 +2030,12 @@ public sealed class Parser
             if (stmt != null)
             {
                 stmt.HoistedComments.AddRange(DrainPendingComments());
-                // Keep a same-line trailing comment attached to this statement's last line.
-                var trailing = TryTakeSameLineComment();
+                // A ';' ending the statement stays with it, inside a block exactly as at script
+                // level; then the same-line trailing comment, after the ';'.
+                if (stmt is not RawTokensNode) stmt.TrailingSemicolon |= TryTakeSameLineSemicolon();
+                // Keep a same-line trailing comment attached to this statement's last line —
+                // a /* */ one just as much as a -- one.
+                var trailing = TryTakeSameLineInlineComment();
                 if (trailing != null) stmt.StatementTrailingComment = trailing;
                 node.Body.Add(stmt);
             }
@@ -2023,14 +2084,32 @@ public sealed class Parser
 
         if (!PeekIs(TokenType.LeftParen)) return node;
         Advance(); // outer (
+        ParseColumnDefs(node.Columns);
+        return node;
+    }
 
+    /// <summary>
+    /// Reads a parenthesised column definition list — the body of CREATE TABLE and of a table
+    /// variable's type — from just after the '(' through the matching ')'. Comments are kept with
+    /// the column they annotate instead of being glued into the next column's definition, which
+    /// left such a script unformatted.
+    /// </summary>
+    private void ParseColumnDefs(List<ColumnDefNode> columns)
+    {
         while (!IsAtEnd())
         {
+            // Comments standing on their own line(s) before a column belong above it.
+            var leading = CollectStandaloneComments();
             // Skip whitespace/newlines between column definitions
             while (!IsAtEnd() && _tokens[_pos].Type is TokenType.Whitespace or TokenType.Newline)
                 _pos++;
             // Raw check: stop at outer )
-            if (_pos >= _tokens.Count || _tokens[_pos].Type == TokenType.RightParen) break;
+            if (_pos >= _tokens.Count || _tokens[_pos].Type == TokenType.RightParen)
+            {
+                // Nothing left to annotate: park the comments above the statement.
+                _pendingComments.AddRange(leading);
+                break;
+            }
 
             // Column name (next non-whitespace token)
             var colName = Advance().Value;
@@ -2071,6 +2150,9 @@ public sealed class Parser
                     continue;
                 }
                 if (raw.Type == TokenType.Comma && depth == 0) break; // column separator
+                // A comment is never part of the definition: it annotates the column and is
+                // taken below, so the comma can be emitted in front of it.
+                if (raw.Type is TokenType.LineComment or TokenType.BlockComment) break;
                 // Regular token — no extra space before/after ( or )
                 if (defTokens.Length > 0 && raw.Type == TokenType.Comma && depth > 0)
                     defTokens.Append(", ");         // "decimal(18, 2)" — space after comma in type
@@ -2080,18 +2162,21 @@ public sealed class Parser
                 _pos++;
             }
 
-            node.Columns.Add(new ColumnDefNode
-            {
-                Name       = colName,
-                Definition = defTokens.ToString().Trim()
-            });
-
+            // The comment can stand on either side of the separating comma.
+            var comment = TryTakeSameLineInlineComment();
             // Consume depth-0 comma separator between columns
             if (!IsAtEnd() && _tokens[_pos].Type == TokenType.Comma) _pos++;
+            comment ??= TryTakeSameLineInlineComment();
+
+            columns.Add(new ColumnDefNode
+            {
+                Name       = colName,
+                Definition = defTokens.ToString().Trim(),
+                TrailingComment = comment
+            }.Tap(c => c.LeadingComments.AddRange(leading)));
         }
         // Consume outer )
         if (!IsAtEnd() && _tokens[_pos].Type == TokenType.RightParen) _pos++;
-        return node;
     }
 
     private AstNode ParseDrop()

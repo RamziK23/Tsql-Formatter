@@ -82,6 +82,8 @@ public sealed class DeclareVarNode : AstNode
     public List<Token> DataType { get; } = new();
     public AstNode? Initializer { get; init; }
     public string? TrailingComment { get; set; }
+    /// <summary>Columns of a table variable ("declare @t table ( … )"), laid out like CREATE TABLE.</summary>
+    public List<ColumnDefNode>? TableColumns { get; set; }
 }
 
 /// <summary>DECLARE statement — one or more comma-separated variables.</summary>
@@ -146,6 +148,9 @@ public sealed class ValuesNode : AstNode
 {
     /// <summary>One list of expressions per VALUES row.</summary>
     public List<List<AstNode>> Rows { get; } = new();
+    /// <summary>Trailing comment per row (same length as <see cref="Rows"/>, null where none).
+    /// The row's comma is emitted before it.</summary>
+    public List<string?> RowComments { get; } = new();
 }
 
 // ─── UPDATE ──────────────────────────────────────────────────────────────────
@@ -171,6 +176,8 @@ public sealed class AssignmentNode : AstNode
 {
     public AstNode Target { get; init; } = null!;   // column ref
     public AstNode Value  { get; init; } = null!;
+    /// <summary>Comment written after this assignment; the comma is emitted before it.</summary>
+    public string? TrailingComment { get; set; }
 }
 
 // ─── DELETE ──────────────────────────────────────────────────────────────────
@@ -514,6 +521,10 @@ public sealed class ColumnDefNode : AstNode
     public string Name { get; init; } = "";
     /// <summary>Full definition after the name: type + constraints (e.g. "varchar(255)" or "int not null default 0").</summary>
     public string Definition { get; init; } = "";
+    /// <summary>Comment written after this column; the comma is emitted before it.</summary>
+    public string? TrailingComment { get; set; }
+    /// <summary>Standalone comments written above this column, each on its own line.</summary>
+    public List<string> LeadingComments { get; } = new();
 }
 
 public sealed class CreateTableNode : AstNode
@@ -584,6 +595,8 @@ public sealed class IfNode : AstNode
     public List<AstNode> Conditions { get; } = new();
     public AstNode? Then { get; init; }
     public AstNode? Else { get; init; }
+    /// <summary>A comment written on the "else" line itself; it stays there.</summary>
+    public string? ElseComment { get; set; }
 }
 
 /// <summary>WHILE &lt;conditions&gt; &lt;body&gt;.</summary>

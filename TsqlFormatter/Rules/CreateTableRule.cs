@@ -34,14 +34,7 @@ public sealed class CreateTableRule : IFormatterRule
         // Opening paren stays on the same line as the table name (matches compact source).
         sb.Append($"{tabs}create table {ct.TableName} (\n");
 
-        for (int i = 0; i < ct.Columns.Count; i++)
-        {
-            var col   = ct.Columns[i];
-            var comma = i < ct.Columns.Count - 1 ? "," : "";
-            // Column name preserves original case; definition kept as-is
-            sb.Append($"{tabs}\t{col.Name} {col.Definition}{comma}\n");
-        }
-
+        sb.Append(RuleHelpers.EmitColumnDefs(ct.Columns, indent));
         sb.Append($"{tabs})");
         return sb.ToString();
     }
