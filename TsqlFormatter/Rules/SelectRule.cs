@@ -29,8 +29,13 @@ public sealed class SelectRule : IFormatterRule
         var header = new System.Text.StringBuilder($"{tabs}select");
         if (sel.IsDistinct) header.Append(" distinct");
         if (sel.TopExpr != null) header.Append($" top {sel.TopExpr}");
-        // A comment the author put on the select line stays there, two tabs out.
-        if (sel.HeaderComment != null) header.Append(RuleHelpers.TrailingCommentSuffix(sel.HeaderComment));
+        // A comment the author put on the select line stays there: a -- comment two tabs out
+        // (the trailing-comment gap), a /* */ comment after a single space, in place of the
+        // space that stood there.
+        if (sel.HeaderComment != null)
+            header.Append(sel.HeaderComment.StartsWith("/*")
+                          ? $" {sel.HeaderComment}"
+                          : RuleHelpers.TrailingCommentSuffix(sel.HeaderComment));
 
         // ── Columns ───────────────────────────────────────────────────────────
         // Every column goes on its own indented line (+1 tab), regardless of count — except in
@@ -44,7 +49,10 @@ public sealed class SelectRule : IFormatterRule
         {
             var col     = sel.Columns[i];
             var colStr  = RuleHelpers.EmitExpr(col.Expression, engine, indent + 1);
-            var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
+            // Comments written around the AS keep their place, a space on either side.
+            var preAs   = col.PreAliasComment  != null ? $" {col.PreAliasComment}"  : "";
+            var postAs  = col.PostAliasComment != null ? $" {col.PostAliasComment}" : "";
+            var alias   = col.Alias != null ? $"{preAs} as{postAs} {col.Alias.Value}" : "";
             var comma   = i < sel.Columns.Count - 1 ? "," : "";
             // Rule 4.1.2: comma goes BEFORE the trailing comment. A -- comment is offset by
             // two tabs; a /* */ block comment glues directly (transparent).

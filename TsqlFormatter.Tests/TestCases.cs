@@ -1228,6 +1228,26 @@ public static class TestCases
             Expected = "select\n\t[col]]--umn]\nfrom dbo.Weird;\t\t-- note",
         },
         new TestCase {
+            Rule = "cmt-safety", Name = "nested block comments close at the right level",
+            Input    = "/* level 1\n  /* level 2\n    /* level 3 */\n  still level 2 */\nlevel 1 again */\nselect 1",
+            Expected = "/* level 1\n  /* level 2\n    /* level 3 */\n  still level 2 */\nlevel 1 again */\nselect\n\t1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "a slash right after the star does not close a block comment",
+            Input    = "/*/ still one comment */\nselect 1",
+            Expected = "/*/ still one comment */\nselect\n\t1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "-- inside a block comment and /* inside a line comment",
+            Input    = "/* has a -- marker inside */\n-- has a /* marker inside, opens nothing\nselect 1",
+            Expected = "/* has a -- marker inside */\n-- has a /* marker inside, opens nothing\nselect\n\t1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "unbalanced quote or bracket inside a comment breaks nothing",
+            Input    = "/* don't break the parser */\n-- it's fine\n/* [ and ( and \" */\nselect 1",
+            Expected = "/* don't break the parser */\n-- it's fine\n/* [ and ( and \" */\nselect\n\t1",
+        },
+        new TestCase {
             Rule = "cmt-safety", Name = "-- and /* inside a string are not comments",
             Input    = "PRINT 'a -- b /* c */ d';",
             Expected = "print 'a -- b /* c */ d';",
@@ -1301,14 +1321,24 @@ public static class TestCases
             Expected = "select\n\t--note\n\ta,\n\tb\nfrom t",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "block comment closing the select line stays on it",
+            Rule = "blockcmt", Name = "block comment on the select line stays on it, a space out",
             Input    = "select /*note*/\na, b\nfrom t",
-            Expected = "select/*note*/\n\ta,\n\tb\nfrom t",
+            Expected = "select /*note*/\n\ta,\n\tb\nfrom t",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "block comment with a column behind it travels with that column",
+            Rule = "blockcmt", Name = "block comment on the select line stays even with a column behind it",
             Input    = "select /*note*/ a, b\nfrom t",
-            Expected = "select\n\t/*note*/ a,\n\tb\nfrom t",
+            Expected = "select /*note*/\n\ta,\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "comments around AS stay on the column line",
+            Input    = "SELECT 1 /* before */ AS /* after */ one;",
+            Expected = "select\n\t1 /* before */ as /* after */ one;",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment after a comma stays glued to the column before it",
+            Input    = "select\na, /*note*/ b\nfrom t",
+            Expected = "select\n\ta,/*note*/\n\tb\nfrom t",
         },
         new TestCase {
             Rule = "linecmt", Name = "comment after distinct/top stays on the select line",

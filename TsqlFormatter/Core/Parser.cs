@@ -678,10 +678,10 @@ public sealed class Parser
         var node = new SelectStatementNode { IsDistinct = distinct, TopExpr = topExpr };
         node.LeadingComments.AddRange(leadingComments);
         if (ctes != null) node.CteDefinitions.AddRange(ctes);
-        // A comment closing the SELECT line annotates the statement, not the first column: it
-        // stays on the select line instead of moving down onto the column's line. A /* */ comment
-        // with a column still behind it on that line is that column's, and travels with it.
-        node.HeaderComment = TryTakeLineClosingComment();
+        // A comment on the SELECT line annotates the statement, not the first column: it stays on
+        // the select line instead of moving down onto the column's line. Columns always start on
+        // their own line, so what followed the comment on that line moves down as usual.
+        node.HeaderComment = TryTakeSameLineInlineComment();
         node.Columns.AddRange(ParseSelectColumns());
         // SELECT ... INTO #tbl / ##global / schema.table / [quoted]
         // A comment between the column list and INTO/FROM (a commented-out clause, typically)
@@ -1055,17 +1055,31 @@ public sealed class Parser
             // it up to the column level so the comma never lands inside the comment (bug 5).
             string? comment = TakeLineCommentFrom(expr);
             Token? alias = assignAlias;
+            string? preAliasComment = null, postAliasComment = null;
             if (alias == null)
             {
-                if (Peek().IsKeyword("AS")) { Advance(); alias = Advance(); }
+                // A /* */ comment written around the AS ("1 /* before */ as /* after */ one")
+                // belongs to the alias. Read as the column's trailing comment instead, it ended
+                // the column list and left "as … one" behind as raw text.
+                int beforeAliasComment = _pos;
+                var pending = TryTakeInlineBlockComment();
+                if (Peek().IsKeyword("AS"))
+                {
+                    preAliasComment = pending;
+                    Advance();
+                    postAliasComment = TryTakeInlineBlockComment();
+                    alias = Advance();
+                }
                 else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier
                          && !IsClauseKeyword(Peek()) && !IsGoKeyword())
-                    alias = Advance();
+                { preAliasComment = pending; alias = Advance(); }
                 // Non-reserved words lex as Keyword but are legal bare aliases (day, year,
                 // key, ...): "select getdate() day" must not split into two columns.
                 else if (Peek().Type == TokenType.Keyword
                          && !IsSelectClauseKeyword() && !IsClauseKeyword(Peek()))
-                    alias = Advance();
+                { preAliasComment = pending; alias = Advance(); }
+                // No alias after all — the comment is the column's own, give it back.
+                else _pos = beforeAliasComment;
             }
             // Only a comment on the SAME line is a trailing comment for this column.
             if (comment == null) comment = TryTakeSameLineComment();
@@ -1081,7 +1095,9 @@ public sealed class Parser
             bool breakAfter = comment == null || comment.StartsWith("--")
                               || NewlineFollows() || !comment.Contains('\n');
             cols.Add(new SelectColumnNode { Expression = expr, Alias = alias, TrailingComment = comment,
-                                            TrailingBreakAfter = breakAfter }
+                                            TrailingBreakAfter = breakAfter,
+                                            PreAliasComment = preAliasComment,
+                                            PostAliasComment = postAliasComment }
                 .Tap(c => c.LeadingComments.AddRange(leadingComments)));
             // Columns are comma-separated: with no comma, the next token can't start another
             // column — it's the next statement ("select 1 \n use db"), which must not be

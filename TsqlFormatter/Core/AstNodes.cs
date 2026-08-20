@@ -215,6 +215,10 @@ public sealed class SelectColumnNode : AstNode
     /// expression (/* note */ expr) or on its own line, following the source; a -- line comment
     /// always renders on its own line above the column (inline it would comment the column out).</summary>
     public List<LeadingComment> LeadingComments { get; } = new();
+    /// <summary>A /* */ comment written between the expression and the AS keyword.</summary>
+    public string? PreAliasComment { get; set; }
+    /// <summary>A /* */ comment written between the AS keyword and the alias.</summary>
+    public string? PostAliasComment { get; set; }
 }
 
 // ─── FROM / JOIN ─────────────────────────────────────────────────────────────
