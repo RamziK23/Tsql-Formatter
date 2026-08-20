@@ -1061,7 +1061,7 @@ public sealed class Parser
                 // A /* */ comment written around the AS ("1 /* before */ as /* after */ one")
                 // belongs to the alias. Read as the column's trailing comment instead, it ended
                 // the column list and left "as … one" behind as raw text.
-                int beforeAliasComment = _pos;
+                int beforeAliasComment = _pos, parkedBeforeAlias = _pendingComments.Count;
                 var pending = TryTakeInlineBlockComment();
                 if (Peek().IsKeyword("AS"))
                 {
@@ -1079,7 +1079,7 @@ public sealed class Parser
                          && !IsSelectClauseKeyword() && !IsClauseKeyword(Peek()))
                 { preAliasComment = pending; alias = Advance(); }
                 // No alias after all — the comment is the column's own, give it back.
-                else _pos = beforeAliasComment;
+                else Rewind(beforeAliasComment, parkedBeforeAlias);
             }
             // Only a comment on the SAME line is a trailing comment for this column.
             if (comment == null) comment = TryTakeSameLineComment();
@@ -1393,11 +1393,11 @@ public sealed class Parser
         var left = ParseMultiplicative();
         while (true)
         {
-            int beforeComments = _pos;
+            int beforeComments = _pos, parked = _pendingComments.Count;
             var comment = TryTakeInlineBlockComment();
             var op = Peek();
             if (op.Type is not (TokenType.Plus or TokenType.Minus or TokenType.BitwiseOp))
-            { _pos = beforeComments; break; }
+            { Rewind(beforeComments, parked); break; }
             // Don't consume Minus that could start a negative number literal in a list context
             Advance();
             var right = ParseMultiplicative();
@@ -1412,11 +1412,11 @@ public sealed class Parser
         left = ApplyCollate(left);
         while (true)
         {
-            int beforeComments = _pos;
+            int beforeComments = _pos, parked = _pendingComments.Count;
             var comment = TryTakeInlineBlockComment();
             var op = Peek();
             if (op.Type is not (TokenType.Multiply or TokenType.Divide or TokenType.Percent))
-            { _pos = beforeComments; break; }
+            { Rewind(beforeComments, parked); break; }
             Advance();
             var right = ApplyCollate(ParsePrimary());
             left = new BinaryExprNode { Left = left, Op = op, Right = right, OpLeadingComment = comment };
@@ -1569,22 +1569,36 @@ public sealed class Parser
         var nameToken = Advance();
         Expect(TokenType.LeftParen);
         var args = new List<AstNode>();
+        var argComments = new List<string?>();
         bool isConvert = nameToken.Value.Equals("CONVERT", StringComparison.OrdinalIgnoreCase)
                       || nameToken.Value.Equals("TRY_CONVERT", StringComparison.OrdinalIgnoreCase);
         if (isConvert)
         {
             args.Add(ParseDataType());
+            argComments.Add(TryTakeInlineBlockComment());
             if (PeekIs(TokenType.Comma)) Advance();
-            while (!IsAtEnd() && !PeekIs(TokenType.RightParen)) { args.Add(ParseExpression()); if (PeekIs(TokenType.Comma)) Advance(); else break; }
+            while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
+            {
+                var a = ParseExpression();
+                args.Add(a);
+                argComments.Add(TakeLineCommentFrom(a) ?? TryTakeInlineBlockComment());
+                if (PeekIs(TokenType.Comma)) Advance(); else break;
+            }
         }
         else
         {
-            args.Add(ParseExpression());
+            var value = ParseExpression();
+            args.Add(value);
+            argComments.Add(TakeLineCommentFrom(value) ?? TryTakeInlineBlockComment());
             if (Peek().IsKeyword("AS")) Advance();
             args.Add(ParseDataType());
+            // "cast(x as decimal(18, 2) /* округление */)" — a comment before the closing paren
+            // belongs to the type, not to whatever comes after the cast.
+            argComments.Add(TryTakeInlineBlockComment());
         }
         Expect(TokenType.RightParen);
-        return new FunctionCallNode { Name = nameToken.Value, IsKeywordFunction = nameToken.Type == TokenType.Keyword }.Tap(n => n.Arguments.AddRange(args));
+        return new FunctionCallNode { Name = nameToken.Value, IsKeywordFunction = nameToken.Type == TokenType.Keyword }
+            .Tap(n => { n.Arguments.AddRange(args); n.ArgumentComments.AddRange(argComments); });
     }
 
     private AstNode ParseDataType()
@@ -1727,30 +1741,61 @@ public sealed class Parser
     private CaseExprNode ParseCase()
     {
         Expect(TokenType.Keyword, "CASE");
+        // "case -- начало CASE" — a comment on the case line is the case's own. Read as an input
+        // expression (the "case x when …" form), it broke the parse and the script went
+        // unformatted.
+        var headerComment = TryTakeSameLineInlineComment();
         AstNode? inputExpr = null;
-        if (!Peek().IsKeyword("WHEN")) inputExpr = ParsePrimary();
+        if (!PeekPastComments().IsKeyword("WHEN")) inputExpr = ParsePrimary();
         var whens = new List<WhenClauseNode>();
         AstNode? elseExpr = null; string? elseComment = null;
-        while (Peek().IsKeyword("WHEN"))
+        var tailComments = new List<string>();
+        while (true)
         {
+            // Standalone comments between branches stay on their own lines above their WHEN.
+            var leading = CollectStandaloneComments();
+            if (!Peek().IsKeyword("WHEN")) { tailComments.AddRange(leading); break; }
             Advance();
             // Conditions chain with and/or; each keeps its operator so the emitter can
             // render "or" continuations too (previously OR failed the whole parse).
             var conds = new List<AstNode> { new ConditionNode { Expression = ParseExpression() } };
-            while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+            while (PeekPastComments().IsKeyword("AND") || PeekPastComments().IsKeyword("OR"))
             {
-                string op = Peek().IsKeyword("AND") ? "and" : "or";
+                string op = PeekPastComments().IsKeyword("AND") ? "and" : "or";
+                CollectStandaloneComments();
                 Advance();
                 conds.Add(new ConditionNode { LogicalOp = op, Expression = ParseExpression() });
             }
+            // A comment between the condition and THEN closes the when line — THEN goes on the
+            // next line anyway, so even a -- comment is safe there.
+            var conditionComment = TryTakeSameLineInlineComment();
             Expect(TokenType.Keyword, "THEN");
-            var then = ParseExpression(); string? tc = null;
-            if (PeekIs(TokenType.LineComment)) tc = Advance().Value;
-            whens.Add(new WhenClauseNode { Then = then, ThenComment = tc }.Tap(w => w.Conditions.AddRange(conds)));
+            // Only a /* */ comment can stand in front of the value: a -- one would comment it out.
+            var thenLeading = TryTakeInlineBlockComment();
+            var then = ParseExpression();
+            // Only a comment on the SAME line belongs to this branch. Taking whatever line comment
+            // came next swallowed the standalone comment that annotated the FOLLOWING branch.
+            string? tc = TakeLineCommentFrom(then) ?? TryTakeSameLineComment();
+            whens.Add(new WhenClauseNode { Then = then, ThenComment = tc,
+                                           ConditionComment = conditionComment,
+                                           ThenLeadingComment = thenLeading }
+                .Tap(w => { w.Conditions.AddRange(conds); w.LeadingComments.AddRange(leading); }));
         }
-        if (Peek().IsKeyword("ELSE")) { Advance(); elseExpr = ParseExpression(); if (PeekIs(TokenType.LineComment)) elseComment = Advance().Value; }
+        var elseLeading = new List<string>(tailComments);
+        tailComments.Clear();
+        if (Peek().IsKeyword("ELSE"))
+        {
+            Advance(); elseExpr = ParseExpression();
+            elseComment = TakeLineCommentFrom(elseExpr) ?? TryTakeSameLineComment();
+            tailComments.AddRange(CollectStandaloneComments());
+        }
+        else { tailComments.AddRange(elseLeading); elseLeading.Clear(); }
         Expect(TokenType.Keyword, "END");
-        return new CaseExprNode { InputExpr = inputExpr, ElseExpr = elseExpr, ElseComment = elseComment }.Tap(n => n.WhenClauses.AddRange(whens));
+        return new CaseExprNode { InputExpr = inputExpr, ElseExpr = elseExpr, ElseComment = elseComment,
+                                  HeaderComment = headerComment }
+            .Tap(n => { n.WhenClauses.AddRange(whens);
+                        n.ElseLeadingComments.AddRange(elseLeading);
+                        n.EndLeadingComments.AddRange(tailComments); });
     }
 
     private FunctionCallNode ParseFunctionCall()
@@ -1771,12 +1816,25 @@ public sealed class Parser
         if (Peek().IsKeyword("DISTINCT")) { Advance(); setQuantifier = "distinct"; }
         else if (Peek().IsKeyword("ALL")) { Advance(); setQuantifier = "all"; }
         var args = new List<AstNode>();
+        var argComments = new List<string?>();
         while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
         {
             // Handle OVER (...) for window functions
-            if (Peek().IsKeyword("OVER")) { Advance(); args.Add(ParseWindowSpec()); continue; }
-            args.Add(ParseBooleanArgument());
-            if (PeekIs(TokenType.Comma)) Advance(); else break;
+            if (Peek().IsKeyword("OVER")) { Advance(); args.Add(ParseWindowSpec()); argComments.Add(null); continue; }
+            var arg = ParseBooleanArgument();
+            // An argument may carry a comment of its own ("o.note,   -- запасной"). Lifted to the
+            // argument list, it renders after the comma instead of being hoisted above the whole
+            // statement, and the call breaks across lines so nothing hides behind a -- comment.
+            string? argComment = TakeLineCommentFrom(arg);
+            // The comment can stand on either side of the separating comma:
+            // "iif(x > 1 /* порог */, 'a', 'b')" and "coalesce(a,   -- основной".
+            argComment ??= TryTakeInlineBlockComment();
+            bool sawComma = PeekIs(TokenType.Comma);
+            if (sawComma) Advance();
+            argComment ??= TryTakeSameLineInlineComment();
+            args.Add(arg);
+            argComments.Add(argComment);
+            if (!sawComma) break;
         }
         Expect(TokenType.RightParen);
         // Window function: OVER clause may follow the closing paren
@@ -1784,6 +1842,7 @@ public sealed class Parser
         if (Peek().IsKeyword("OVER")) { Advance(); overClause = ParseWindowSpec(); }
         var fn = new FunctionCallNode { Name = name, IsKeywordFunction = isKeyword, OverClause = overClause, SetQuantifier = setQuantifier };
         fn.Arguments.AddRange(args);
+        fn.ArgumentComments.AddRange(argComments);
         return fn;
     }
 
@@ -2460,6 +2519,18 @@ public sealed class Parser
         _pos = i + 1;
         if (_hoistComments) { _pendingComments.Add(val); return null; }
         return val;
+    }
+
+    /// <summary>
+    /// Undoes a speculative read: back to <paramref name="position"/>, and any comment parked
+    /// along the way is un-parked. Without the second half, a comment read speculatively and then
+    /// given back was hoisted once per attempt and came out duplicated.
+    /// </summary>
+    private void Rewind(int position, int parkedCount)
+    {
+        _pos = position;
+        if (_pendingComments.Count > parkedCount)
+            _pendingComments.RemoveRange(parkedCount, _pendingComments.Count - parkedCount);
     }
 
     /// <summary>Consumes a ';' standing on the current line, and reports whether there was one.</summary>

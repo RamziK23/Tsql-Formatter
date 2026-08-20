@@ -140,6 +140,14 @@ internal static class RuleHelpers
         comment.StartsWith("/*") ? comment : $"{Tabs(2)}{comment}";
 
     /// <summary>
+    /// Renders a comment that CLOSES a line it did not end in the source — after "select", after
+    /// a WHEN condition — where the author had written a space in front of it. A /* */ comment
+    /// keeps that single space; a -- comment takes the usual two-tab trailing gap.
+    /// </summary>
+    public static string LineClosingCommentSuffix(string comment) =>
+        comment.StartsWith("/*") ? $" {comment}" : $"{Tabs(2)}{comment}";
+
+    /// <summary>
     /// Splits a column's leading comments into two rendered parts: comments that take their own
     /// line above the column (prefixed by <paramref name="linePrefix"/>, ending in a newline) and
     /// comments glued inline before the expression. A -- comment always takes its own line, or the
@@ -293,10 +301,25 @@ internal static class RuleHelpers
 
     private static string EmitFunction(FunctionCallNode fn, FormatterEngine engine, int indent)
     {
-        bool isCast = fn.Name.Equals("CAST", StringComparison.OrdinalIgnoreCase)
+        // A comment the author wrote after an argument, glued to that argument's text. A /* */
+        // comment stays inline; a -- comment forces the call onto several lines below, so it can
+        // close its own line without commenting anything out.
+        string? RawArgComment(int i) =>
+            i < fn.ArgumentComments.Count ? fn.ArgumentComments[i] : null;
+        // Inline, the comment stands where the author wrote it — one space after the argument.
+        string ArgComment(int i) =>
+            RawArgComment(i) is string c ? LineClosingCommentSuffix(c) : "";
+        // Broken across lines, the comma comes first and the comment follows it in the usual
+        // trailing style (a -- comment two tabs out, a /* */ one glued).
+        string ArgCommentAfterComma(int i) =>
+            RawArgComment(i) is string c ? TrailingCommentSuffix(c) : "";
+        bool anyLineComment = fn.ArgumentComments.Any(c => c != null && c.StartsWith("--"));
+
+        bool isCast = !anyLineComment
+                   && (fn.Name.Equals("CAST", StringComparison.OrdinalIgnoreCase)
                    || fn.Name.Equals("TRY_CAST", StringComparison.OrdinalIgnoreCase)
                    || fn.Name.Equals("CONVERT", StringComparison.OrdinalIgnoreCase)
-                   || fn.Name.Equals("TRY_CONVERT", StringComparison.OrdinalIgnoreCase);
+                   || fn.Name.Equals("TRY_CONVERT", StringComparison.OrdinalIgnoreCase));
 
         if (isCast)
         {
@@ -304,15 +327,15 @@ internal static class RuleHelpers
                           || fn.Name.Equals("TRY_CONVERT", StringComparison.OrdinalIgnoreCase);
             if (isConvert)
             {
-                var argStrs = fn.Arguments.Select(a => EmitExpr(a, engine, indent)).ToList();
+                var argStrs = fn.Arguments.Select((a, i) => EmitExpr(a, engine, indent) + ArgComment(i)).ToList();
                 return $"{fn.Name.ToLowerInvariant()}({string.Join(", ", argStrs)})";
             }
             else
             {
                 if (fn.Arguments.Count >= 2)
                 {
-                    var expr     = EmitExpr(fn.Arguments[0], engine, indent);
-                    var dataType = EmitExpr(fn.Arguments[1], engine, indent);
+                    var expr     = EmitExpr(fn.Arguments[0], engine, indent) + ArgComment(0);
+                    var dataType = EmitExpr(fn.Arguments[1], engine, indent) + ArgComment(1);
                     return $"{fn.Name.ToLowerInvariant()}({expr} as {dataType})";
                 }
             }
@@ -331,7 +354,7 @@ internal static class RuleHelpers
         // do so when at least one argument renders as multiline (contains a CASE,
         // a subquery, or a nested function that itself broke). Otherwise keep inline.
         var rendered = fn.Arguments.Select(a => EmitExpr(a, engine, indent + 1)).ToList();
-        bool anyMultiline = rendered.Any(r => r.Contains('\n'));
+        bool anyMultiline = rendered.Any(r => r.Contains('\n')) || anyLineComment;
         var quant = fn.SetQuantifier != null ? fn.SetQuantifier + " " : "";
 
         if (anyMultiline && fn.Arguments.Count > 0)
@@ -345,14 +368,17 @@ internal static class RuleHelpers
                 // DISTINCT/ALL prefixes the first argument.
                 var pref = i == 0 ? quant : "";
                 sb.Append($"{t1}{pref}{rendered[i]}");
+                // The comma belongs to the argument, before its comment — inside the comment it
+                // would be commented out.
                 if (i < rendered.Count - 1) sb.Append(",");
+                sb.Append(ArgCommentAfterComma(i));
                 sb.Append("\n");
             }
             sb.Append($"{t0}){overStr}");
             return sb.ToString();
         }
 
-        var args = string.Join(", ", fn.Arguments.Select(a => EmitExpr(a, engine, indent)));
+        var args = string.Join(", ", fn.Arguments.Select((a, i) => EmitExpr(a, engine, indent) + ArgComment(i)));
         return $"{fnName}({quant}{args}){overStr}";
     }
 
@@ -365,9 +391,13 @@ internal static class RuleHelpers
         sb.Append("case");
         if (ce.InputExpr != null)
             sb.Append($" {EmitExpr(ce.InputExpr, engine, indent)}");
+        // A comment written on the case line stays on it.
+        if (ce.HeaderComment != null) sb.Append(TrailingCommentSuffix(ce.HeaderComment));
 
         foreach (var wc in ce.WhenClauses)
         {
+            foreach (var c in wc.LeadingComments)
+                sb.Append($"\n{whenIndent}{c}");
             var conditions = wc.Conditions.Select((c, idx) =>
             {
                 var cn   = c as ConditionNode;
@@ -380,17 +410,27 @@ internal static class RuleHelpers
             string condStr = string.Concat(conditions);
             string thenStr = EmitExpr(wc.Then, engine, indent + 1);
             string thenComment = wc.ThenComment != null ? $"{Tabs(2)}{wc.ThenComment}" : "";
+            // A comment between the condition and THEN closes the when line; one in front of the
+            // value stays in front of it.
+            string condComment = wc.ConditionComment != null
+                ? LineClosingCommentSuffix(wc.ConditionComment) : "";
+            string thenLead = wc.ThenLeadingComment != null ? $"{wc.ThenLeadingComment} " : "";
             // when and then on separate lines, both at the same indent
-            sb.Append($"\n{whenIndent}when {condStr}");
-            sb.Append($"\n{whenIndent}then {thenStr}{thenComment}");
+            sb.Append($"\n{whenIndent}when {condStr}{condComment}");
+            sb.Append($"\n{whenIndent}then {thenLead}{thenStr}{thenComment}");
         }
 
         if (ce.ElseExpr != null)
         {
+            foreach (var c in ce.ElseLeadingComments)
+                sb.Append($"\n{whenIndent}{c}");
             string elseStr = EmitExpr(ce.ElseExpr, engine, indent + 1);
             string elseComment = ce.ElseComment != null ? $"{Tabs(2)}{ce.ElseComment}" : "";
             sb.Append($"\n{whenIndent}else {elseStr}{elseComment}");
         }
+
+        foreach (var c in ce.EndLeadingComments)
+            sb.Append($"\n{whenIndent}{c}");
 
         sb.Append($"\n{baseIndent}end");
         return sb.ToString();

@@ -33,9 +33,7 @@ public sealed class SelectRule : IFormatterRule
         // (the trailing-comment gap), a /* */ comment after a single space, in place of the
         // space that stood there.
         if (sel.HeaderComment != null)
-            header.Append(sel.HeaderComment.StartsWith("/*")
-                          ? $" {sel.HeaderComment}"
-                          : RuleHelpers.TrailingCommentSuffix(sel.HeaderComment));
+            header.Append(RuleHelpers.LineClosingCommentSuffix(sel.HeaderComment));
 
         // ── Columns ───────────────────────────────────────────────────────────
         // Every column goes on its own indented line (+1 tab), regardless of count — except in

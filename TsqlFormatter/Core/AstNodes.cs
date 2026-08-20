@@ -385,6 +385,11 @@ public sealed class FunctionCallNode : AstNode
     /// <summary>True when the function name was a SQL keyword (built-in). Emit lowercase.</summary>
     public bool IsKeywordFunction { get; init; }
     public List<AstNode> Arguments { get; } = new();
+    /// <summary>
+    /// Trailing comment per argument (same length as <see cref="Arguments"/>, null where there is
+    /// none). A comma goes before the comment, never inside it.
+    /// </summary>
+    public List<string?> ArgumentComments { get; } = new();
     /// <summary>Window function OVER (...) clause, if any.</summary>
     public AstNode? OverClause { get; init; }
     /// <summary>Set quantifier inside an aggregate: "distinct" or "all" (e.g. count(distinct x)).</summary>
@@ -413,6 +418,12 @@ public sealed class CaseExprNode : AstNode
     public List<WhenClauseNode> WhenClauses { get; } = new();
     public AstNode? ElseExpr { get; init; }
     public string? ElseComment { get; init; }
+    /// <summary>A comment written on the "case" line itself.</summary>
+    public string? HeaderComment { get; set; }
+    /// <summary>Standalone comments written just before ELSE, each on its own line.</summary>
+    public List<string> ElseLeadingComments { get; } = new();
+    /// <summary>Standalone comments written just before END, each on its own line.</summary>
+    public List<string> EndLeadingComments { get; } = new();
 }
 
 public sealed class WhenClauseNode : AstNode
@@ -420,6 +431,12 @@ public sealed class WhenClauseNode : AstNode
     public List<AstNode> Conditions { get; } = new();
     public AstNode Then { get; init; } = null!;
     public string? ThenComment { get; init; }
+    /// <summary>Standalone comments written above this WHEN, each on its own line.</summary>
+    public List<string> LeadingComments { get; } = new();
+    /// <summary>A comment written between the last condition and THEN; closes the when line.</summary>
+    public string? ConditionComment { get; set; }
+    /// <summary>A /* */ comment written between THEN and its value; stays in front of the value.</summary>
+    public string? ThenLeadingComment { get; set; }
 }
 
 public sealed class LiteralNode : AstNode

@@ -1194,6 +1194,45 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── 2.5 case: comments inside a CASE keep their places ────────────────
+        new TestCase {
+            Rule = "2.5", Name = "comment on the case line stays on it",
+            Input    = "select case -- start\nwhen a = 1 then 'x'\nelse 'y'\nend as n\nfrom t",
+            Expected = "select\n\tcase\t\t-- start\n\t\twhen a = 1\n\t\tthen 'x'\n\t\telse 'y'\n\tend as n\nfrom t",
+        },
+        new TestCase {
+            Rule = "2.5", Name = "comment between the condition and then closes the when line",
+            Input    = "select case\nwhen a = 1 /* c */ then 'x'\nelse 'y'\nend as n\nfrom t",
+            Expected = "select\n\tcase\n\t\twhen a = 1 /* c */\n\t\tthen 'x'\n\t\telse 'y'\n\tend as n\nfrom t",
+        },
+        new TestCase {
+            Rule = "2.5", Name = "block comment after then stays in front of the value",
+            Input    = "select case\nwhen a = 3 then /* c */ 'x'\nelse 'y'\nend as n\nfrom t",
+            Expected = "select\n\tcase\n\t\twhen a = 3\n\t\tthen /* c */ 'x'\n\t\telse 'y'\n\tend as n\nfrom t",
+        },
+        new TestCase {
+            Rule = "2.5", Name = "standalone comment between branches keeps its own line",
+            Input    = "select case\nwhen a = 2 then 'B' -- second\n-- between branches\nwhen a = 3 then 'C'\nelse 'D'\nend as n\nfrom t",
+            Expected = "select\n\tcase\n\t\twhen a = 2\n\t\tthen 'B'\t\t-- second\n\t\t-- between branches\n\t\twhen a = 3\n\t\tthen 'C'\n\t\telse 'D'\n\tend as n\nfrom t",
+        },
+
+        // ── fnbreak: comments on function arguments ───────────────────────────
+        new TestCase {
+            Rule = "fnbreak", Name = "arguments with -- comments break onto their own lines",
+            Input    = "select coalesce(\na,   -- one\nb,   -- two\n'' -- three\n) as t\nfrom t",
+            Expected = "select\n\tcoalesce(\n\t\ta,\t\t-- one\n\t\tb,\t\t-- two\n\t\t''\t\t-- three\n\t) as t\nfrom t",
+        },
+        new TestCase {
+            Rule = "fnbreak", Name = "block comment before the comma stays inline",
+            Input    = "select iif(o.total > 1000 /* limit */, 'a', 'b') as n\nfrom t",
+            Expected = "select\n\tiif(o.total > 1000 /* limit */, 'a', 'b') as n\nfrom t",
+        },
+        new TestCase {
+            Rule = "convert", Name = "comment after the cast type stays inside the cast",
+            Input    = "select cast(o.total as decimal(18, 2) /* round */) as m\nfrom t",
+            Expected = "select\n\tcast(o.total as decimal(18, 2) /* round */) as m\nfrom t",
+        },
+
         // ── semi: the ';' the author wrote is kept where it was ───────────────
         new TestCase {
             Rule = "semi", Name = "a run of statements on one line splits at every ';'",
