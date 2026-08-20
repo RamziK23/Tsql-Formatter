@@ -180,6 +180,51 @@ public sealed class AssignmentNode : AstNode
     public string? TrailingComment { get; set; }
 }
 
+/// <summary>
+/// MERGE target USING source ON … WHEN … THEN … [OUTPUT …].
+/// </summary>
+public sealed class MergeNode : AstNode
+{
+    public TableRefNode Target { get; init; } = null!;
+    /// <summary>The optional INTO the author wrote ("merge into t"); kept as written.</summary>
+    public bool HasInto { get; init; }
+    /// <summary>Comment written on the "merge …" line.</summary>
+    public string? TargetComment { get; set; }
+    public TableRefNode Source { get; init; } = null!;
+    /// <summary>Comment written on the source's closing line ("…) as src -- note").</summary>
+    public string? SourceComment { get; set; }
+    public List<AstNode> OnConditions { get; } = new();
+    public List<MergeWhenNode> Whens { get; } = new();
+    /// <summary>OUTPUT … kept verbatim on its own line, or null.</summary>
+    public List<Token>? OutputTokens { get; set; }
+    public string? OutputComment { get; set; }
+    /// <summary>The INTO … target of an OUTPUT clause, on its own line.</summary>
+    public List<Token>? OutputIntoTokens { get; set; }
+    public string? OutputIntoComment { get; set; }
+}
+
+/// <summary>One WHEN … THEN &lt;action&gt; branch of a MERGE.</summary>
+public sealed class MergeWhenNode : AstNode
+{
+    /// <summary>"matched", "not matched by target" or "not matched by source".</summary>
+    public string Kind { get; init; } = "matched";
+    /// <summary>Extra conditions after AND; the first stays on the when line.</summary>
+    public List<AstNode> ExtraConditions { get; } = new();
+    /// <summary>Comment written between the conditions and THEN.</summary>
+    public string? ConditionComment { get; set; }
+    /// <summary>Comment written on the THEN line.</summary>
+    public string? ThenComment { get; set; }
+    /// <summary>"update" (with <see cref="Assignments"/>), "insert" or "delete".</summary>
+    public string Action { get; set; } = "delete";
+    public List<AssignmentNode> Assignments { get; } = new();
+    /// <summary>INSERT column list, may be empty.</summary>
+    public List<AstNode> InsertColumns { get; } = new();
+    /// <summary>INSERT source: a ValuesNode, or null for "insert default values".</summary>
+    public AstNode? InsertValues { get; set; }
+    /// <summary>True for "insert default values".</summary>
+    public bool DefaultValues { get; set; }
+}
+
 // ─── DELETE ──────────────────────────────────────────────────────────────────
 
 public sealed class DeleteNode : AstNode
@@ -262,6 +307,10 @@ public sealed class PivotNode : AstNode
     /// <summary>The IN (...) list, one entry per value.</summary>
     public List<AstNode> InValues { get; } = new();
     public Token? Alias { get; set; }
+    /// <summary>Comment written after the aggregate / value column.</summary>
+    public string? HeadComment { get; set; }
+    /// <summary>Comment written after the IN (...) list.</summary>
+    public string? InComment { get; set; }
 }
 
 public sealed class JoinNode : AstNode

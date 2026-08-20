@@ -504,6 +504,7 @@ public sealed class Parser
         if (tok.IsKeyword("INSERT"))               return ParseInsert();
         if (tok.IsKeyword("UPDATE"))               return ParseUpdate();
         if (tok.IsKeyword("DELETE"))               return ParseDelete();
+        if (tok.IsKeyword("MERGE") && !PeekAt(1).IsKeyword("JOIN")) return ParseMerge();
         // BEGIN TRAN[SACTION] is a transaction statement, NOT a BEGIN...END block:
         // parsing it as a block would swallow following statements and fabricate an "end".
         if (tok.IsKeyword("BEGIN") && IsTransactionWord(PeekAt(1)))
@@ -914,6 +915,36 @@ public sealed class Parser
         PeekClause("SET", preSet);
         Expect(TokenType.Keyword, "SET");
 
+        var assignments = ParseAssignmentList();
+
+        var fromClauses = new List<AstNode>();
+        if (PeekClause("FROM", preFrom))
+        {
+            Advance();
+            fromClauses.Add(ParseTableRef());
+            fromClauses.AddRange(ParseTrailingJoins(preWhere));
+        }
+
+        var whereConds = new List<AstNode>();
+        if (PeekClause("WHERE", preWhere)) { Advance(); whereConds.AddRange(ParseConditionList(isJoinOn: false)); }
+
+        return new UpdateNode { Table = table, TargetComment = targetComment }.Tap(n =>
+        {
+            n.Assignments.AddRange(assignments);
+            n.FromClauses.AddRange(fromClauses);
+            n.WhereConditions.AddRange(whereConds);
+            n.PreSetComments.AddRange(preSet);
+            n.PreFromComments.AddRange(preFrom);
+            n.PreWhereComments.AddRange(preWhere);
+        });
+    }
+
+    /// <summary>
+    /// The comma-separated "col = value" list of a SET clause — UPDATE's and the one in a MERGE's
+    /// WHEN … THEN UPDATE branch.
+    /// </summary>
+    private List<AssignmentNode> ParseAssignmentList()
+    {
         var assignments = new List<AssignmentNode>();
         while (true)
         {
@@ -939,27 +970,7 @@ public sealed class Parser
             assignments.Add(new AssignmentNode { Target = target, Value = value, TrailingComment = assignComment });
             if (!more) break;
         }
-
-        var fromClauses = new List<AstNode>();
-        if (PeekClause("FROM", preFrom))
-        {
-            Advance();
-            fromClauses.Add(ParseTableRef());
-            fromClauses.AddRange(ParseTrailingJoins(preWhere));
-        }
-
-        var whereConds = new List<AstNode>();
-        if (PeekClause("WHERE", preWhere)) { Advance(); whereConds.AddRange(ParseConditionList(isJoinOn: false)); }
-
-        return new UpdateNode { Table = table, TargetComment = targetComment }.Tap(n =>
-        {
-            n.Assignments.AddRange(assignments);
-            n.FromClauses.AddRange(fromClauses);
-            n.WhereConditions.AddRange(whereConds);
-            n.PreSetComments.AddRange(preSet);
-            n.PreFromComments.AddRange(preFrom);
-            n.PreWhereComments.AddRange(preWhere);
-        });
+        return assignments;
     }
 
     /// <summary>
@@ -990,6 +1001,118 @@ public sealed class Parser
             }
             return joins;
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  MERGE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// MERGE [INTO] target [AS alias] USING source [AS alias] ON &lt;conditions&gt;
+    /// WHEN [NOT] MATCHED [BY TARGET|SOURCE] [AND &lt;conditions&gt;] THEN &lt;action&gt; …
+    /// [OUTPUT … [INTO …]]. The action is UPDATE SET …, INSERT (…) VALUES (…) or DELETE — all
+    /// in their abbreviated MERGE form, without a table of their own.
+    /// </summary>
+    private MergeNode ParseMerge()
+    {
+        Advance(); // MERGE
+        bool hasInto = Peek().IsKeyword("INTO");
+        if (hasInto) Advance();
+        var target = ParseTableRef();
+        var targetComment = TryTakeSameLineInlineComment();
+
+        Expect(TokenType.Keyword, "USING");
+        var source = ParseTableRef();
+        var sourceComment = TryTakeSameLineInlineComment();
+
+        var node = new MergeNode { Target = target, HasInto = hasInto, TargetComment = targetComment,
+                                   Source = source, SourceComment = sourceComment };
+
+        Expect(TokenType.Keyword, "ON");
+        node.OnConditions.AddRange(ParseConditionList(isJoinOn: true));
+
+        while (Peek().IsKeyword("WHEN"))
+        {
+            Advance();
+            var kind = new System.Text.StringBuilder();
+            if (Peek().IsKeyword("NOT")) { Advance(); kind.Append("not "); }
+            Expect(TokenType.Keyword, "MATCHED");
+            kind.Append("matched");
+            if (Peek().Value.Equals("BY", StringComparison.OrdinalIgnoreCase))
+            { Advance(); kind.Append(" by ").Append(Advance().Value.ToLowerInvariant()); }
+
+            var when = new MergeWhenNode { Kind = kind.ToString() };
+            while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+            {
+                string op = Peek().IsKeyword("AND") ? "and" : "or";
+                Advance();
+                when.ExtraConditions.Add(new ConditionNode { LogicalOp = op, Expression = ParseExpression() });
+            }
+            when.ConditionComment = TryTakeSameLineInlineComment();
+            Expect(TokenType.Keyword, "THEN");
+            when.ThenComment = TryTakeSameLineInlineComment();
+
+            if (Peek().IsKeyword("UPDATE"))
+            {
+                Advance();
+                Expect(TokenType.Keyword, "SET");
+                when.Action = "update";
+                when.Assignments.AddRange(ParseAssignmentList());
+            }
+            else if (Peek().IsKeyword("INSERT"))
+            {
+                Advance();
+                when.Action = "insert";
+                if (PeekIs(TokenType.LeftParen))
+                {
+                    Advance();
+                    while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
+                    {
+                        when.InsertColumns.Add(ParseExpression());
+                        if (PeekIs(TokenType.Comma)) Advance(); else break;
+                    }
+                    Expect(TokenType.RightParen);
+                }
+                if (Peek().IsKeyword("DEFAULT")) { Advance(); Advance(); when.DefaultValues = true; }
+                else if (Peek().IsKeyword("VALUES")) when.InsertValues = ParseValues();
+            }
+            else
+            {
+                Expect(TokenType.Keyword, "DELETE");
+                when.Action = "delete";
+            }
+            node.Whens.Add(when);
+        }
+
+        // OUTPUT … [INTO …] is kept verbatim: it is a list of its own with no layout rules here.
+        if (Peek().Value.Equals("OUTPUT", StringComparison.OrdinalIgnoreCase))
+        {
+            node.OutputTokens = TakeClauseTokens();
+            node.OutputComment = TryTakeSameLineInlineComment();
+            // "output … into #log" — the INTO target keeps its own line.
+            if (PeekPastComments().IsKeyword("INTO"))
+            {
+                _pendingComments.AddRange(CollectStandaloneComments());
+                node.OutputIntoTokens = TakeClauseTokens();
+                node.OutputIntoComment = TryTakeSameLineInlineComment();
+            }
+        }
+        return node;
+    }
+
+    /// <summary>
+    /// Takes a clause verbatim — its keyword and everything up to the end of the line, a ';', a
+    /// comment or a following clause keyword. Used for MERGE's OUTPUT / INTO, which have no
+    /// layout rules of their own; keywords are lowercased like everywhere else.
+    /// </summary>
+    private List<Token> TakeClauseTokens()
+    {
+        var tokens = new List<Token> { Lowered(Advance()) };
+        while (!IsAtEnd() && !PeekIs(TokenType.Semicolon)
+               && Peek().Type is not (TokenType.LineComment or TokenType.BlockComment)
+               && !Peek().IsKeyword("INTO") && !IsGoKeyword())
+            tokens.Add(Peek().Type == TokenType.Keyword ? Lowered(Advance()) : Advance());
+        return tokens;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1256,12 +1379,15 @@ public sealed class Parser
         // ParsePrimary, not ParseExpression: the column after FOR is followed by IN, which the
         // expression parser would happily swallow as an "x in (…)" test.
         var head = ParsePrimary();
+        // Comments inside the pivot block stay in it, instead of being hoisted above the query.
+        var headComment = TakeLineCommentFrom(head) ?? TryTakeSameLineInlineComment();
         Expect(TokenType.Keyword, "FOR");
         var forColumn = ParsePrimary();
         Expect(TokenType.Keyword, "IN");
         Expect(TokenType.LeftParen);
 
-        var node = new PivotNode { Kind = kw.Value.ToLowerInvariant(), Head = head, ForColumn = forColumn };
+        var node = new PivotNode { Kind = kw.Value.ToLowerInvariant(), Head = head, ForColumn = forColumn,
+                                   HeadComment = headComment };
         while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
         {
             node.InValues.Add(ParseExpression());
@@ -1269,6 +1395,7 @@ public sealed class Parser
             else break;
         }
         Expect(TokenType.RightParen);   // closes IN (
+        node.InComment = TryTakeSameLineInlineComment();
         Expect(TokenType.RightParen);   // closes PIVOT (
 
         if (Peek().IsKeyword("AS")) { Advance(); node.Alias = Advance(); }

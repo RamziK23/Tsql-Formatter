@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~84 · Тестов: 262/262 · Движок: .NET 5
+- Правил: ~85 · Тестов: 266/266 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -999,6 +999,9 @@ order by
 	pvt.VendorID
 ```
 
+Комментарии внутри блока остаются в нём: после агрегата — на его строке, после списка `in (…)` —
+на строке закрывающей скобки. Раньше они выносились над всем запросом.
+
 `unpivot` устроен так же — на месте агрегата стоит обычная колонка:
 
 ```sql
@@ -1527,6 +1530,54 @@ from t1 as w
 Обе формы поддержаны, с FROM/JOIN и WHERE по тем же правилам, что и SELECT.
 WHERE в `update`/`delete` рендерится **так же плоско**, как в `select` — внешние
 скобки вокруг условий с `or` не добавляются (см. `where-or`).
+
+### `merge` — MERGE … USING … ON … WHEN … THEN …
+Каждое ключевое слово начинает свою строку. Условия `on` — как у джойна: первое на строке `on`
+(+1 таб), остальные с `and`/`or` на своих строках (+2 таба). Каждая ветка `when …` — на своей
+строке, первое дополнительное условие после `and` остаётся на ней (как в `if`); `then` — на
+отдельной строке, действие ветки — на +1 таб. `output` и его `into` — каждый на своей строке.
+Необязательное `into` после `merge` сохраняется, если было написано. Комментарии остаются на
+своих местах. Раньше `merge` не разбирался вовсе, и скрипт с ним не форматировался.
+
+```sql
+-- вход
+MERGE dbo.OrderLine AS tgt -- приёмник
+USING dbo.Src AS src
+   ON tgt.order_id = src.order_id -- условие
+WHEN MATCHED AND tgt.qty <> src.qty /* если изменилось */ THEN
+    UPDATE SET tgt.qty = src.qty -- количество
+WHEN NOT MATCHED BY TARGET THEN -- нет в приёмнике
+    INSERT (order_id, qty)
+    VALUES (src.order_id, src.qty)
+WHEN NOT MATCHED BY SOURCE THEN
+    DELETE
+OUTPUT $action, inserted.id -- что произошло
+INTO #log;
+-- результат
+merge dbo.OrderLine as tgt		-- приёмник
+using dbo.Src as src
+	on tgt.order_id = src.order_id		-- условие
+when matched and tgt.qty <> src.qty /* если изменилось */
+then
+	update set
+		tgt.qty = src.qty		-- количество
+when not matched by target
+then		-- нет в приёмнике
+	insert (
+		order_id,
+		qty
+	)
+	values
+		(src.order_id, src.qty)
+when not matched by source
+then
+	delete
+output $action, inserted.id		-- что произошло
+into #log;
+```
+
+Псевдоколонки `$action` / `$IDENTITY` / `$ROWGUID` — один токен (раньше `$action`
+превращалось в `$ action`).
 
 ---
 

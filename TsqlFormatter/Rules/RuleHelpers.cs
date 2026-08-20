@@ -574,6 +574,7 @@ internal static class RuleHelpers
         var sb = new System.Text.StringBuilder();
         sb.Append($"\n{t0}{p.Kind} (");
         sb.Append($"\n{t1}{EmitExpr(p.Head, engine, indent + 1)}");
+        if (p.HeadComment != null) sb.Append(LineClosingCommentSuffix(p.HeadComment));
         sb.Append($"\n{t1}for {EmitExpr(p.ForColumn, engine, indent + 1)} in (");
         for (int i = 0; i < p.InValues.Count; i++)
         {
@@ -581,6 +582,7 @@ internal static class RuleHelpers
             sb.Append($"\n{t2}{EmitExpr(p.InValues[i], engine, indent + 2)}{comma}");
         }
         sb.Append($"\n{t1})");
+        if (p.InComment != null) sb.Append(TrailingCommentSuffix(p.InComment));
         sb.Append($"\n{t0})");
         if (p.Alias != null) sb.Append($" as {p.Alias.Value}");
         return sb.ToString();

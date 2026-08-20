@@ -23,6 +23,7 @@ public static class FormatterFactory
             new FragmentRule(),
             new GoSeparatorRule(),
             new SemicolonRule(),
+            new MergeRule(),
             new RawTokensRule(),
         };
         return new FormatterEngine(rules);

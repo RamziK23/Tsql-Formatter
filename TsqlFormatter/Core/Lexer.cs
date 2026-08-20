@@ -77,6 +77,9 @@ public sealed class Lexer
         if (c == '0' && (Peek(1) == 'x' || Peek(1) == 'X')) return ReadHexLiteral();
         if (char.IsDigit(c) || (c == '.' && char.IsDigit(Peek(1)))) return ReadNumber();
         if (c == '@') return ReadVariable();
+        // $action / $IDENTITY / $ROWGUID — pseudo-columns; one token, or "$action" came out as
+        // "$ action" with a space in the middle.
+        if (c == '$' && (char.IsLetter(Peek(1)) || Peek(1) == '_')) return ReadDollarColumn();
         if (char.IsLetter(c) || c == '_' || c == '#') return ReadWord();
         // Compound assignment operators must stay a single token: += -= *= /= %= &= |= ^=
         // (checked before the '/*' comment case above already handled '/*').
@@ -128,6 +131,15 @@ public sealed class Lexer
         string prefix = Peek(0) == '@' ? "@" + Advance() : "@";
         string name = ReadWhile(c => char.IsLetterOrDigit(c) || c == '_');
         return new Token(TokenType.Variable, prefix + name, sl, sc);
+    }
+
+    /// <summary>A $-prefixed pseudo-column: $action, $IDENTITY, $ROWGUID. Case preserved.</summary>
+    private Token ReadDollarColumn()
+    {
+        int sl = _line, sc = _col;
+        Advance(); // $
+        string name = ReadWhile(c => char.IsLetterOrDigit(c) || c == '_');
+        return new Token(TokenType.Identifier, "$" + name, sl, sc);
     }
 
     private Token ReadStringLiteral(bool unicodePrefix = false)

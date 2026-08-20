@@ -1351,6 +1351,23 @@ public static class TestCases
             Expected = "with c as (\n\tselect\n\t\tid\n\tfrom t\n)\ndelete d\nfrom u as d\n\tinner join c\n\t\ton c.id = d.id",
         },
 
+        // ── merge: MERGE … USING … WHEN … THEN ────────────────────────────────
+        new TestCase {
+            Rule = "merge", Name = "merge with update / insert branches",
+            Input    = "merge into dbo.t as tgt\nusing dbo.s as src on tgt.id = src.id and tgt.k = src.k\nwhen matched then update set tgt.v = src.v\nwhen not matched then insert (id, v) values (src.id, src.v);",
+            Expected = "merge into dbo.t as tgt\nusing dbo.s as src\n\ton tgt.id = src.id\n\t\tand tgt.k = src.k\nwhen matched\nthen\n\tupdate set\n\t\ttgt.v = src.v\nwhen not matched\nthen\n\tinsert (\n\t\tid,\n\t\tv\n\t)\n\tvalues\n\t\t(src.id, src.v);",
+        },
+        new TestCase {
+            Rule = "merge", Name = "merge with by target / by source and default values",
+            Input    = "merge dbo.t tgt using dbo.s src\non tgt.id = src.id\nwhen not matched by target then insert default values\nwhen not matched by source then delete;",
+            Expected = "merge dbo.t as tgt\nusing dbo.s as src\n\ton tgt.id = src.id\nwhen not matched by target\nthen\n\tinsert default values\nwhen not matched by source\nthen\n\tdelete;",
+        },
+        new TestCase {
+            Rule = "merge", Name = "merge keeps its comments, condition on the when line, output/into on their own",
+            Input    = "MERGE dbo.OrderLine AS tgt -- приёмник\nUSING dbo.Src AS src\n   ON tgt.order_id = src.order_id -- условие\nWHEN MATCHED AND tgt.qty <> src.qty /* если изменилось */ THEN\n    UPDATE SET tgt.qty = src.qty -- количество\nOUTPUT $action, inserted.id -- что произошло\nINTO #log; -- временная",
+            Expected = "merge dbo.OrderLine as tgt\t\t-- приёмник\nusing dbo.Src as src\n\ton tgt.order_id = src.order_id\t\t-- условие\nwhen matched and tgt.qty <> src.qty /* если изменилось */\nthen\n\tupdate set\n\t\ttgt.qty = src.qty\t\t-- количество\noutput $action, inserted.id\t\t-- что произошло\ninto #log;\t\t-- временная",
+        },
+
         // ── pivot: PIVOT / UNPIVOT laid out as a block ────────────────────────
         new TestCase {
             Rule = "pivot", Name = "pivot over a derived table, one IN value per line",
@@ -1361,6 +1378,11 @@ public static class TestCases
             Rule = "pivot", Name = "unpivot over a plain table",
             Input    = "select cid, col, val\nfrom t\nunpivot (val for col in (a, b, c)) as u\nwhere val > 0",
             Expected = "select\n\tcid,\n\tcol,\n\tval\nfrom t\nunpivot (\n\tval\n\tfor col in (\n\t\ta,\n\t\tb,\n\t\tc\n\t)\n) as u\nwhere\n\tval > 0",
+        },
+        new TestCase {
+            Rule = "pivot", Name = "comments inside the pivot block stay in it",
+            Input    = "select * from (select status, total from dbo.Orders) as s\nPIVOT (\nSUM(total) /* агрегат */\nFOR status IN ([1], [2]) -- список значений\n) AS p;",
+            Expected = "select\n\t*\nfrom (\n\tselect\n\t\tstatus,\n\t\ttotal\n\tfrom dbo.Orders\n) as s\npivot (\n\tsum(total) /* агрегат */\n\tfor status in (\n\t\t[1],\n\t\t[2]\n\t)\t\t-- список значений\n) as p;",
         },
         new TestCase {
             Rule = "pivot", Name = "a join after the pivot keeps its own layout",
