@@ -15,4 +15,13 @@ public sealed class GoSeparatorRule : IFormatterRule
     }
 }
 
+/// <summary>A ';' written on a line of its own keeps that line.</summary>
+public sealed class SemicolonRule : IFormatterRule
+{
+    public bool CanHandle(AstNode node) => node is SemicolonNode;
+
+    public string Format(AstNode node, FormatterEngine engine, int indent) =>
+        $"{RuleHelpers.Tabs(indent)};";
+}
+
 }

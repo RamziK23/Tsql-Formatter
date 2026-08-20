@@ -54,7 +54,17 @@ public sealed class Parser
             {
                 var raw = PeekRaw();
                 if (raw.Type == TokenType.Semicolon)
-                    { hadSemicolon = true; AdvanceRaw(); continue; }
+                {
+                    hadSemicolon = true;
+                    AdvanceRaw();
+                    // A ';' the author put on a line of its own is a statement of its own and
+                    // keeps that line. (The ';' that opens ";with …" is handled by hadSemicolon,
+                    // and one that ends a statement was taken by that statement already.)
+                    if (newlinesBefore > 0 && script.Statements.Count > 0
+                        && !PeekPastComments().IsKeyword("WITH"))
+                        script.Statements.Add(new SemicolonNode { BlankLineBefore = newlinesBefore >= 2 });
+                    continue;
+                }
                 if (raw.Type == TokenType.Newline)
                     { newlinesBefore++; AdvanceRaw(); continue; }
                 if (raw.Type == TokenType.Whitespace)
@@ -129,6 +139,10 @@ public sealed class Parser
                 // Preserve a blank line that existed before this statement in the source.
                 if (newlinesBefore >= 2 && script.Statements.Count > 0)
                     stmt.BlankLineBefore = true;
+                // A ';' on the statement's own last line terminates it and stays with it, so the
+                // next statement starts on its own line instead of being run together with this
+                // one. A ';' on a later line is left to the separator loop above.
+                if (stmt is not RawTokensNode) stmt.TrailingSemicolon = TryTakeSameLineSemicolon();
                 // A -- comment on the SAME line as the statement's end is a trailing comment
                 // for THIS statement — keep it attached here rather than letting it migrate
                 // to the following statement as a standalone comment.
@@ -1363,12 +1377,15 @@ public sealed class Parser
         var left = ParseMultiplicative();
         while (true)
         {
+            int beforeComments = _pos;
+            var comment = TryTakeInlineBlockComment();
             var op = Peek();
-            if (op.Type is not (TokenType.Plus or TokenType.Minus or TokenType.BitwiseOp)) break;
+            if (op.Type is not (TokenType.Plus or TokenType.Minus or TokenType.BitwiseOp))
+            { _pos = beforeComments; break; }
             // Don't consume Minus that could start a negative number literal in a list context
             Advance();
             var right = ParseMultiplicative();
-            left = new BinaryExprNode { Left = left, Op = op, Right = right };
+            left = new BinaryExprNode { Left = left, Op = op, Right = right, OpLeadingComment = comment };
         }
         return left;
     }
@@ -1379,11 +1396,14 @@ public sealed class Parser
         left = ApplyCollate(left);
         while (true)
         {
+            int beforeComments = _pos;
+            var comment = TryTakeInlineBlockComment();
             var op = Peek();
-            if (op.Type is not (TokenType.Multiply or TokenType.Divide or TokenType.Percent)) break;
+            if (op.Type is not (TokenType.Multiply or TokenType.Divide or TokenType.Percent))
+            { _pos = beforeComments; break; }
             Advance();
             var right = ApplyCollate(ParsePrimary());
-            left = new BinaryExprNode { Left = left, Op = op, Right = right };
+            left = new BinaryExprNode { Left = left, Op = op, Right = right, OpLeadingComment = comment };
         }
         return left;
     }
@@ -2058,6 +2078,9 @@ public sealed class Parser
             else if (t.Type == TokenType.LeftParen)          parenDepth++;
             else if (t.Type == TokenType.RightParen)         parenDepth--;
             raw.Tokens.Add(Advance());
+            // A ';' ends the statement and belongs to it. Reading past it ran a whole run of
+            // "print 'a'; print 'b'; …" together into one statement on one line.
+            if (parenDepth == 0 && t.Type == TokenType.Semicolon) break;
         }
         return raw;
     }
@@ -2406,6 +2429,33 @@ public sealed class Parser
 
     /// <summary>True when a newline (or the end of input) comes before the next meaningful token,
     /// i.e. the author broke the line here.</summary>
+    /// <summary>
+    /// Takes a /* */ comment written where an operator is expected ("10 /* note */ / 2"), so the
+    /// comment does not end the expression and leave "/ 2" behind as raw text. Only block
+    /// comments: a -- comment really does end its line, and pulling code up onto it would
+    /// comment that code out.
+    /// </summary>
+    private string? TryTakeInlineBlockComment()
+    {
+        int i = _pos;
+        while (i < _tokens.Count && Skippable.Contains(_tokens[i].Type)) i++;
+        if (i >= _tokens.Count || _tokens[i].Type != TokenType.BlockComment) return null;
+        var val = _tokens[i].Value;
+        _pos = i + 1;
+        if (_hoistComments) { _pendingComments.Add(val); return null; }
+        return val;
+    }
+
+    /// <summary>Consumes a ';' standing on the current line, and reports whether there was one.</summary>
+    private bool TryTakeSameLineSemicolon()
+    {
+        int i = _pos;
+        while (i < _tokens.Count && _tokens[i].Type == TokenType.Whitespace) i++;
+        if (i >= _tokens.Count || _tokens[i].Type != TokenType.Semicolon) return false;
+        _pos = i + 1;
+        return true;
+    }
+
     private bool NewlineFollows()
     {
         int i = _pos;

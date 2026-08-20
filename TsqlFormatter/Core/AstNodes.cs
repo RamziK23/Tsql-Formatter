@@ -22,6 +22,12 @@ public abstract class AstNode
     public List<AstNode> CteDefinitions { get; } = new();
 
     /// <summary>
+    /// The author terminated this statement with ';' on its last line. Re-emitted glued to the
+    /// statement's last token, before any trailing comment.
+    /// </summary>
+    public bool TrailingSemicolon { get; set; }
+
+    /// <summary>
     /// Comments that turned up where an operand was expected ("where x = --note\n 1"). No
     /// expression can hold them, so they are lifted to the statement and rendered on their own
     /// line(s) above it — moved, but never lost, and never left where they would comment out code.
@@ -279,6 +285,8 @@ public sealed class BinaryExprNode : AstNode
     public AstNode Left { get; init; } = null!;
     public Token Op { get; init; } = null!;
     public AstNode Right { get; init; } = null!;
+    /// <summary>A /* */ comment written between the left operand and the operator, kept there.</summary>
+    public string? OpLeadingComment { get; set; }
 }
 
 /// <summary>A parenthesised expression: ( expr ). Preserves grouping like ((a+b)*(c-d)).</summary>
@@ -420,6 +428,11 @@ public sealed class ColumnRefNode : AstNode
 {
     public List<Token> Parts { get; } = new();
     public string? TrailingComment { get; set; }
+}
+
+/// <summary>A ';' the author wrote on a line of its own; it keeps that line.</summary>
+public sealed class SemicolonNode : AstNode
+{
 }
 
 public sealed class GoSeparatorNode : AstNode

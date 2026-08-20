@@ -27,6 +27,11 @@ public sealed class Lexer
         "CHAR","VARCHAR","NCHAR","NVARCHAR","TEXT","NTEXT","DATE","DATETIME","DATETIME2",
         "SMALLDATETIME","TIME","UNIQUEIDENTIFIER","XML","IMAGE","VARBINARY","BINARY",
         "NOCOUNT","TRANSACTION","COMMIT","ROLLBACK","SAVEPOINT","LOCK",
+        // SET session options — keywords, so "SET QUOTED_IDENTIFIER ON" lowercases like any
+        // other keyword. Only the underscored option names, which nobody uses as a column name.
+        "QUOTED_IDENTIFIER","ANSI_NULLS","ANSI_PADDING","ANSI_WARNINGS","ARITHABORT",
+        "CONCAT_NULL_YIELDS_NULL","NUMERIC_ROUNDABORT","XACT_ABORT","IMPLICIT_TRANSACTIONS",
+        "IDENTITY_INSERT",
         "PRIMARY","FOREIGN","KEY","CONSTRAINT","DEFAULT","IDENTITY","CHECK",
         "NONCLUSTERED","CLUSTERED","UNIQUE","INCLUDE","FILLFACTOR","PAD_INDEX",
         "NOLOCK","READPAST","UPDLOCK","TABLOCK","ROWLOCK","XLOCK","HOLDLOCK",
@@ -139,13 +144,27 @@ public sealed class Lexer
         return new Token(TokenType.StringLiteral, sb.ToString(), sl, sc);
     }
 
+    /// <summary>
+    /// Bracketed identifier: [name]. A doubled ]] inside escapes a literal ] — stopping at the
+    /// first ] instead cut "[col]]--umn]" into three tokens and turned the rest of the line into
+    /// a comment.
+    /// </summary>
     private Token ReadQuotedIdentifier()
     {
         int sl = _line, sc = _col;
         var sb = new System.Text.StringBuilder();
-        sb.Append(Advance());
-        while (_pos < _source.Length && _source[_pos] != ']') sb.Append(Advance());
-        if (_pos < _source.Length) sb.Append(Advance());
+        sb.Append(Advance()); // opening [
+        while (_pos < _source.Length)
+        {
+            char c = _source[_pos];
+            if (c == ']')
+            {
+                sb.Append(Advance());
+                if (_pos < _source.Length && _source[_pos] == ']') sb.Append(Advance());
+                else break;
+            }
+            else sb.Append(Advance());
+        }
         return new Token(TokenType.QuotedIdentifier, sb.ToString(), sl, sc);
     }
 

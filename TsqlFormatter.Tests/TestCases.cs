@@ -55,7 +55,7 @@ public static class TestCases
         new TestCase {
             Rule = "declare", Name = "initializer-less last variable stops at ';' (no over-consumption)",
             Input    = "declare @x int;\nselect 1 from t",
-            Expected = "declare @x int\nselect\n\t1\nfrom t",
+            Expected = "declare @x int;\nselect\n\t1\nfrom t",
         },
 
         // ── DROP TABLE trailing comment (bug 7) ──────────────────────────────
@@ -1192,6 +1192,50 @@ public static class TestCases
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
+        },
+
+        // ── semi: the ';' the author wrote is kept where it was ───────────────
+        new TestCase {
+            Rule = "semi", Name = "a run of statements on one line splits at every ';'",
+            Input    = "PRINT 'a'; PRINT 'b'; PRINT 'c';",
+            Expected = "print 'a';\nprint 'b';\nprint 'c';",
+        },
+        new TestCase {
+            Rule = "semi", Name = "';' glues to the statement, before its trailing comment",
+            Input    = "SELECT [c] FROM dbo.Weird;  -- note",
+            Expected = "select\n\t[c]\nfrom dbo.Weird;\t\t-- note",
+        },
+        new TestCase {
+            Rule = "semi", Name = "a ';' written on its own line keeps that line",
+            Input    = "SELECT 5 --2\n;",
+            Expected = "select\n\t5\t\t--2\n;",
+        },
+        new TestCase {
+            Rule = "semi", Name = "';' before a with is still glued to the with",
+            Input    = "select 1\n;with c as (select 2 as a from t)\nselect a from c",
+            Expected = "select\n\t1\n;with c as (\n\tselect\n\t\t2 as a\n\tfrom t\n)\nselect\n\ta\nfrom c",
+        },
+        new TestCase {
+            Rule = "semi", Name = "set option name lowercased like a keyword",
+            Input    = "SET QUOTED_IDENTIFIER ON;",
+            Expected = "set quoted_identifier on;",
+        },
+
+        // ── weird identifiers and comment-shaped text that is not a comment ───
+        new TestCase {
+            Rule = "cmt-safety", Name = "escaped ]] inside a bracketed identifier is one token",
+            Input    = "SELECT [col]]--umn]      FROM dbo.Weird;  -- note",
+            Expected = "select\n\t[col]]--umn]\nfrom dbo.Weird;\t\t-- note",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "-- and /* inside a string are not comments",
+            Input    = "PRINT 'a -- b /* c */ d';",
+            Expected = "print 'a -- b /* c */ d';",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment written in place of a space keeps the expression whole",
+            Input    = "SELECT 10 /* note */ / 2;",
+            Expected = "select\n\t10 /* note */ / 2;",
         },
 
         // ── cte: a CTE list can head INSERT / UPDATE / DELETE too ─────────────

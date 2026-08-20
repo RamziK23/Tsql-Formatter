@@ -110,7 +110,8 @@ internal static class RuleHelpers
             {
                 var prev = toks[i - 1];
                 bool noSpaceBefore = t.Type is TokenType.LeftParen or TokenType.RightParen
-                                            or TokenType.Comma or TokenType.Dot;
+                                            or TokenType.Comma or TokenType.Dot
+                                            or TokenType.Semicolon;
                 if (prev.Type == TokenType.Comma)                              sb.Append(' ');  // "a, b"
                 else if (noSpaceBefore)                                        { }               // before ( ) , .
                 else if (prev.Type is TokenType.LeftParen or TokenType.Dot)    { }               // after ( or .
@@ -188,7 +189,9 @@ internal static class RuleHelpers
         var right = EmitExpr(b.Right, engine, indent);
         // Keyword operators (e.g. COLLATE) are lowercased like other keywords.
         var op = b.Op.Type == TokenType.Keyword ? b.Op.Value.ToLowerInvariant() : b.Op.Value;
-        return $"{left} {op} {right}";
+        // A /* */ comment written in place of the space before the operator stays there.
+        var cmt = b.OpLeadingComment != null ? $"{b.OpLeadingComment} " : "";
+        return $"{left} {cmt}{op} {right}";
     }
 
     private static string EmitIn(InExprNode i, FormatterEngine engine, int indent)

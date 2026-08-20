@@ -266,6 +266,10 @@ public sealed class FormatterEngine
                 continue;
             }
 
+            // The ';' the author wrote at the end of the statement goes back where it was:
+            // glued to the last token, before any trailing comment.
+            if (stmt.TrailingSemicolon) formatted += ";";
+
             // A same-line trailing -- comment sticks to the statement's last line.
             if (stmt.StatementTrailingComment != null)
                 formatted = AppendTrailingComment(formatted, stmt.StatementTrailingComment);
