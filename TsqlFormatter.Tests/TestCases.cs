@@ -1199,6 +1199,23 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── condition groups indent from the line they start on ───────────────
+        new TestCase {
+            Rule = "where-or", Name = "nested group inside a case condition indents from its own line",
+            Input    = "select max(\ncase\nwhen c.status not in (2, 3)\nand p.timeTo is not null\nand (n.timeFrom > p.timeTo\nor (n.timeFrom is null\nand p.timeTo < getdate()))\nthen -1\nend\n) as w\nfrom t",
+            Expected = "select\n\tmax(\n\t\tcase\n\t\t\twhen c.status not in (2, 3)\n\t\t\t\tand p.timeTo is not null\n\t\t\t\tand (\n\t\t\t\t\tn.timeFrom > p.timeTo\n\t\t\t\t\tor (\n\t\t\t\t\t\tn.timeFrom is null\n\t\t\t\t\t\tand p.timeTo < getdate()\n\t\t\t\t\t)\n\t\t\t\t)\n\t\t\tthen -1\n\t\tend\n\t) as w\nfrom t",
+        },
+        new TestCase {
+            Rule = "if", Name = "group as the first condition closes on the if line's level",
+            Input    = "if (@a = 1\nor @b = 2)\nprint 1",
+            Expected = "if (\n\t@a = 1\n\tor @b = 2\n)\nprint 1",
+        },
+        new TestCase {
+            Rule = "if", Name = "group in a continuation condition closes one tab in",
+            Input    = "if @x = 0 and (@a = 1\nor @b = 2)\nprint 1",
+            Expected = "if @x = 0\n\tand (\n\t\t@a = 1\n\t\tor @b = 2\n\t)\nprint 1",
+        },
+
         // ── cmt-inline: a comment with code behind it becomes a block comment ─
         new TestCase {
             Rule = "cmt-inline", Name = "-- comment after a join keyword becomes a block comment",

@@ -432,7 +432,10 @@ internal static class RuleHelpers
             var conditions = wc.Conditions.Select((c, idx) =>
             {
                 var cn   = c as ConditionNode;
-                string cStr = EmitExpr(cn?.Expression ?? c, engine, indent + 1);
+                // Each condition is emitted at the indent of the line it lands on: the first sits
+                // on the "when" line (+1), the rest one tab further. Emitting them all at +1 put
+                // a nested "( … )" group's body and closing paren a tab too far left.
+                string cStr = EmitExpr(cn?.Expression ?? c, engine, idx == 0 ? indent + 1 : indent + 2);
                 // Continuation conditions start the next line with a lowercase and/or,
                 // rather than trailing "AND" at the end of the previous line.
                 string op = cn?.LogicalOp ?? "and";
@@ -509,20 +512,24 @@ internal static class RuleHelpers
         if (conditions[0] is ConditionNode head && head.LeadingComments.Count > 0) return null;
 
         var lines = new List<string>();
-        foreach (var c in conditions)
+        for (int i = 0; i < conditions.Count; i++)
         {
+            var c = conditions[i];
+            // The first condition stays on the keyword's line, so it renders at that line's
+            // indent; the rest sit one tab in. A "( … )" group closes at its own line's indent.
+            int lineIndent = i == 0 ? indent : indent + 1;
             if (c is ConditionNode cond)
             {
                 // Standalone comments on their own line(s) above the condition.
                 lines.AddRange(cond.LeadingComments);
                 string prefix = cond.LogicalOp != null ? $"{cond.LogicalOp} " : "";
-                string expr   = EmitExpr(cond.Expression, engine, indent + 1);
+                string expr   = EmitExpr(cond.Expression, engine, lineIndent);
                 string cmt    = cond.TrailingComment != null ? $" {cond.TrailingComment}" : "";
                 lines.Add($"{prefix}{expr}{cmt}");
             }
             else
             {
-                lines.Add(EmitExpr(c, engine, indent + 1));
+                lines.Add(EmitExpr(c, engine, lineIndent));
             }
         }
         return lines[0] + string.Concat(lines.Skip(1).Select(l => $"\n{Tabs(indent + 1)}{l}"));

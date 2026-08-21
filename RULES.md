@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~86 · Тестов: 272/272 · Движок: .NET 5
+- Правил: ~86 · Тестов: 275/275 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1121,6 +1121,31 @@ where
 ```
 
 ### `where-or` — Скобочные группы условий сохраняются, внешние скобки не добавляются
+Группа отсчитывает отступ **от той строки, на которой она начинается**: тело — на таб глубже,
+закрывающая `)` — вровень с открывающей. Это одинаково работает и в `where`, и в условиях `when`
+внутри `case`, и в `if`/`while`. Раньше группа внутри `case` считала отступ от строки `when`, а не
+от своей, и вложенным скобкам не хватало табуляций.
+
+```sql
+-- вход
+when c.status not in (2, 3)
+and p.timeTo is not null
+and (n.timeFrom > p.timeTo
+or (n.timeFrom is null
+and p.timeTo < getdate()))
+then -1
+-- результат
+			when c.status not in (2, 3)
+				and p.timeTo is not null
+				and (
+					n.timeFrom > p.timeTo
+					or (
+						n.timeFrom is null
+						and p.timeTo < getdate()
+					)
+				)
+			then -1
+```
 
 ```sql
 -- вход
