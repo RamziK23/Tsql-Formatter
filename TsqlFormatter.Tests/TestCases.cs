@@ -1199,6 +1199,23 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── stmtbound: a raw statement stops at the next statement's keyword ──
+        new TestCase {
+            Rule = "stmtbound", Name = "set after exec is its own statement",
+            Input    = "exec webcar.dbo.[p] @y = @yy, @m = @mm  \n\nset @mm = @mm+1",
+            Expected = "exec webcar.dbo.[p] @y = @yy, @m = @mm\n\nset @mm = @mm + 1",
+        },
+        new TestCase {
+            Rule = "stmtbound", Name = "exec and set written on one line are split",
+            Input    = "exec webcar.dbo.[p] @y = @yy, @m = @mm set @mm = @mm + 1",
+            Expected = "exec webcar.dbo.[p] @y = @yy, @m = @mm\nset @mm = @mm + 1",
+        },
+        new TestCase {
+            Rule = "stmtbound", Name = "print / exec / print on one line split into three",
+            Input    = "print 'a' exec dbo.p @a = 1 print 'b'",
+            Expected = "print 'a'\nexec dbo.p @a = 1\nprint 'b'",
+        },
+
         // ── condition groups indent from the line they start on ───────────────
         new TestCase {
             Rule = "where-or", Name = "nested group inside a case condition indents from its own line",

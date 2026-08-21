@@ -2388,12 +2388,16 @@ public sealed class Parser
         {
             var t = Peek();
             if (t.IsKeyword("SELECT") || t.IsKeyword("WITH") || t.IsKeyword("INSERT")
-                || t.IsKeyword("UPDATE") || t.IsKeyword("DELETE")
+                || t.IsKeyword("UPDATE") || t.IsKeyword("DELETE") || t.IsKeyword("MERGE")
                 || t.IsKeyword("DROP")  || t.IsKeyword("CREATE") || t.IsKeyword("BEGIN")
                 || t.IsKeyword("IF")    || t.IsKeyword("WHILE")  || t.IsKeyword("RETURN")
                 || t.IsKeyword("COMMIT")|| t.IsKeyword("ROLLBACK")
                 || t.Type == TokenType.DeclareKeyword
                 || t.Type == TokenType.EndOfFile || IsGoKeyword()) break;
+            // A statement of its own also starts at SET / PRINT / EXEC and friends. Reading past
+            // them ran two statements together on one line: "exec dbo.p @m = @mm set @mm = …".
+            // Only outside parens — "exec dbo.p (…)" and a string argument keep their contents.
+            if (parenDepth == 0 && raw.Tokens.Count > 0 && IsStatementStartKeyword(t)) break;
             // END closes the enclosing BEGIN block and ELSE opens the alternative branch of an
             // IF — a raw statement ("print 'x'", "exec …") must stop before them, otherwise the
             // block/branch structure is swallowed and the BEGIN loses its END. An END that
@@ -2417,6 +2421,17 @@ public sealed class Parser
         }
         return raw;
     }
+
+    /// <summary>
+    /// Keywords that can only START a statement, so a raw statement ("exec …", "print …") has to
+    /// stop in front of them. SET is the one that matters most: "exec dbo.p @m = @mm" followed by
+    /// "set @mm = @mm + 1" is two statements, however the author spaced them.
+    /// </summary>
+    private static bool IsStatementStartKeyword(Token t) =>
+        t.IsKeyword("SET") || t.IsKeyword("PRINT") || t.IsKeyword("EXEC") || t.IsKeyword("EXECUTE")
+        || t.IsKeyword("RAISERROR") || t.IsKeyword("THROW") || t.IsKeyword("TRUNCATE")
+        || t.IsKeyword("WAITFOR") || t.IsKeyword("GOTO") || t.IsKeyword("BREAK")
+        || t.IsKeyword("CONTINUE");
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  Helpers
