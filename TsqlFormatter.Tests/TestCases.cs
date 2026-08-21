@@ -1199,6 +1199,38 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── cmt-inline: a comment with code behind it becomes a block comment ─
+        new TestCase {
+            Rule = "cmt-inline", Name = "-- comment after a join keyword becomes a block comment",
+            Input    = "select a from t\nleft join -- тип соединения\n     dbo.Orders as o\n     on o.id = t.id",
+            Expected = "select\n\ta\nfrom t\n\tleft join /*тип соединения*/ dbo.Orders as o\n\t\ton o.id = t.id",
+        },
+        new TestCase {
+            Rule = "cmt-inline", Name = "block comment between from and its table keeps the table beside it",
+            Input    = "SELECT status, total\nFROM /*таблица должна быть рядом с from*/\ndbo.Orders",
+            Expected = "select\n\tstatus,\n\ttotal\nfrom /*таблица должна быть рядом с from*/ dbo.Orders",
+        },
+        new TestCase {
+            Rule = "cmt-inline", Name = "-- comment after a table name becomes a block comment before the column list",
+            Input    = "create table dbo.T  -- комментарий после имени\n(\nid int not null\n)",
+            Expected = "create table dbo.T /*комментарий после имени*/ (\n\tid int not null\n)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "comment alone on its line inside over () keeps that line",
+            Input    = "select row_number() over (\n/* без PARTITION BY */\norder by a.total desc -- по убыванию\n) as rn\nfrom t",
+            Expected = "select\n\trow_number()\n\t\tover (\n\t\t\t/* без PARTITION BY */\n\t\t\torder by\n\t\t\t\ta.total desc\t\t-- по убыванию\n\t\t) as rn\nfrom t",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "table constraints keep their names and lowercase their keywords",
+            Input    = "create table dbo.T (\nid int identity(1, 1) not null,\ntotal AS (price * qty) PERSISTED,\nCONSTRAINT PK_T PRIMARY KEY CLUSTERED (id ASC),\nCONSTRAINT CK_T CHECK (qty > 0)\n-- висячий комментарий\n);",
+            Expected = "create table dbo.T (\n\tid int identity(1, 1) not null,\n\ttotal as (price * qty) persisted,\n\tconstraint PK_T primary key clustered (id asc),\n\tconstraint CK_T check (qty > 0)\n\t-- висячий комментарий\n);",
+        },
+        new TestCase {
+            Rule = "window", Name = "frame clause words lowercased",
+            Input    = "select sum(a.total) OVER (\nPARTITION BY a.line -- разбиение\nORDER BY a.id\nROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW -- рамка\n) as running\nfrom t as a",
+            Expected = "select\n\tsum(a.total)\n\t\tover (\n\t\t\tpartition by\n\t\t\t\ta.line\t\t-- разбиение\n\t\t\torder by\n\t\t\t\ta.id\n\t\t\trows between unbounded preceding and current row -- рамка\n\t\t) as running\nfrom t as a",
+        },
+
         // ── comments that used to derail a procedure body ─────────────────────
         new TestCase {
             Rule = "cmt-safety", Name = "leading-comma SET list: comma before the comment",

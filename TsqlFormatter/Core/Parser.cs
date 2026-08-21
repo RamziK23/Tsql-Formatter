@@ -769,7 +769,7 @@ public sealed class Parser
                     break;
                 }
             }
-            } while (PeekIs(TokenType.Comma) && AdvanceAndTrue());
+            } while (PeekIs(TokenType.Comma) && AdvanceCommaKeepingTrailingComment(node));
         }
         if (Peek().IsKeyword("WHERE"))  { Advance(); node.WhereConditions.AddRange(ParseConditionList(isJoinOn: false)); }
         if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
@@ -884,6 +884,26 @@ public sealed class Parser
     }
 
     private bool AdvanceAndTrue() { Advance(); return true; }
+
+    /// <summary>
+    /// Consumes the comma between FROM sources and keeps a comment that follows it on the same
+    /// line with the source BEFORE it — that is where the formatter itself puts such a comment
+    /// ("from t1 as a,   --note"), so re-formatting its own output has to read it back the same
+    /// way instead of handing it to the next source.
+    /// </summary>
+    private bool AdvanceCommaKeepingTrailingComment(SelectStatementNode node)
+    {
+        Advance(); // ,
+        var trailing = TryTakeSameLineInlineComment();
+        if (trailing != null)
+        {
+            var last = node.FromClauses.Count > 0 ? node.FromClauses[^1] : null;
+            if (last is TableRefNode tref && tref.TrailingComment == null) tref.TrailingComment = trailing;
+            else if (last is JoinNode join && join.TrailingComment == null) join.TrailingComment = trailing;
+            else _pendingComments.Add(trailing);
+        }
+        return true;
+    }
 
     /// <summary>Consumes the comma between DECLARE variables; a comment right after the comma
     /// is attached to the variable just parsed (if it doesn't already carry one).</summary>
@@ -1292,6 +1312,13 @@ public sealed class Parser
 
     private TableRefNode ParseTableRef(bool allowFuncArgs = true)
     {
+        // A comment between the clause keyword and the table ("left join -- тип\n dbo.Orders")
+        // belongs in front of the name. Read as the name itself, it turned the real name into an
+        // alias and split the script ("from /*c*/ as dbo" + ".Orders" on the next line).
+        var leadComments = CollectStandaloneComments();
+        string? leadComment = leadComments.Count > 0
+            ? string.Join(" ", leadComments.Select(CommentText.AsInline)) : null;
+
         // Subquery as table source: (SELECT ...) AS alias
         if (PeekIs(TokenType.LeftParen))
         {
@@ -1305,7 +1332,7 @@ public sealed class Parser
                 sqAlias = Advance();
             return new TableRefNode {
                 SubQuery = new SubQueryNode { Select = sub }.Tap(q => q.CloseComments.AddRange(closingComments)),
-                Alias = sqAlias }.Tap(n => n.Pivot = TryParsePivot());
+                Alias = sqAlias, LeadingComment = leadComment }.Tap(n => n.Pivot = TryParsePivot());
         }
 
         var nameParts = new List<Token>();
@@ -1362,7 +1389,8 @@ public sealed class Parser
         bool isOpenQuery = nameParts.Count == 1
             && nameParts[0].Value.Equals("openquery", System.StringComparison.OrdinalIgnoreCase)
             && funcArgs != null;
-        return new TableRefNode { Alias = alias, FuncArgs = funcArgs, IsOpenQuery = isOpenQuery, HintNolock = hint }
+        return new TableRefNode { Alias = alias, FuncArgs = funcArgs, IsOpenQuery = isOpenQuery,
+                                 HintNolock = hint, LeadingComment = leadComment }
             .Tap(n => { n.Name.AddRange(nameParts); n.Pivot = TryParsePivot(); });
     }
 
@@ -2057,6 +2085,11 @@ public sealed class Parser
         Expect(TokenType.LeftParen);
         var spec = new WindowSpecNode();
 
+        // A comment written on its own line after "over (" stays on its own line; peeked past,
+        // it hid the PARTITION/ORDER behind it and the whole clause fell into the raw frame.
+        if (PeekPastComments().IsKeyword("PARTITION") || PeekPastComments().IsKeyword("ORDER"))
+            spec.LeadingComments.AddRange(CollectStandaloneComments());
+
         if (Peek().IsKeyword("PARTITION"))
         {
             Advance();
@@ -2109,8 +2142,14 @@ public sealed class Parser
             string? dir = null;
             if (Peek().IsKeyword("ASC"))  { Advance(); dir = "asc";  }
             else if (Peek().IsKeyword("DESC")) { Advance(); dir = "desc"; }
-            list.Add(WithLeadingComments(new OrderByItemNode { Expression = expr, Direction = dir }, leading));
-            if (PeekIs(TokenType.Comma)) { Advance(); continue; } break;
+            var item = new OrderByItemNode { Expression = expr, Direction = dir };
+            // A comment on the item's own line stays with it. Inside an OVER (…) it used to fall
+            // through into the frame clause and come out on a line of its own.
+            item.TrailingComment = TakeLineCommentFrom(expr);
+            list.Add(WithLeadingComments(item, leading));
+            if (PeekIs(TokenType.Comma)) { Advance(); item.TrailingComment ??= TryTakeSameLineInlineComment(); continue; }
+            item.TrailingComment ??= TryTakeSameLineInlineComment();
+            break;
         }
         return list;
     }
@@ -2201,17 +2240,24 @@ public sealed class Parser
         Advance(); // TABLE
         // Collect table name (might be schema.table or #temp)
         var nameTokens = new System.Text.StringBuilder();
+        var nameComments = new List<string>();
         while (!IsAtEnd() && !PeekIs(TokenType.LeftParen) && !IsGoKeyword()
                && Peek().Type != TokenType.EndOfFile)
         {
+            // A comment between the name and the column list ("create table t -- note\n(") is not
+            // part of the name — appended to it, it made the whole statement unparsable.
+            if (PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
+            { nameComments.Add(Advance().Value); continue; }
             nameTokens.Append(Advance().Value);
         }
         var tableName = nameTokens.ToString().Trim();
         var node = new CreateTableNode { TableName = tableName };
+        if (nameComments.Count > 0)
+            node.NameComment = string.Join(" ", nameComments.Select(CommentText.AsInline));
 
         if (!PeekIs(TokenType.LeftParen)) return node;
         Advance(); // outer (
-        ParseColumnDefs(node.Columns);
+        ParseColumnDefs(node.Columns, node.CloseComments);
         return node;
     }
 
@@ -2221,7 +2267,7 @@ public sealed class Parser
     /// the column they annotate instead of being glued into the next column's definition, which
     /// left such a script unformatted.
     /// </summary>
-    private void ParseColumnDefs(List<ColumnDefNode> columns)
+    private void ParseColumnDefs(List<ColumnDefNode> columns, List<string>? closeComments = null)
     {
         while (!IsAtEnd())
         {
@@ -2233,67 +2279,67 @@ public sealed class Parser
             // Raw check: stop at outer )
             if (_pos >= _tokens.Count || _tokens[_pos].Type == TokenType.RightParen)
             {
-                // Nothing left to annotate: park the comments above the statement.
-                _pendingComments.AddRange(leading);
+                // A comment left hanging after the last column keeps its own line above the
+                // closing paren; with nowhere to render it, it is parked above the statement.
+                if (closeComments != null) closeComments.AddRange(leading);
+                else _pendingComments.AddRange(leading);
                 break;
             }
 
-            // Column name (next non-whitespace token)
-            var colName = Advance().Value;
+            // Column name (next non-whitespace token). A keyword in that slot is not a name but
+            // the start of a table constraint ("constraint PK_… primary key …"), so it is
+            // lowercased like any other keyword; real names keep their case.
+            var nameToken = Advance();
+            var colName = nameToken.Type == TokenType.Keyword
+                ? nameToken.Value.ToLowerInvariant() : nameToken.Value;
 
             // Collect definition: everything until a DEPTH-0 comma or closing )
             // Track paren depth so varchar(255) and decimal(18,2) are parsed whole.
             var defTokens = new System.Text.StringBuilder();
             int depth = 0;
+            // Whether the source had whitespace before the token about to be appended. It only
+            // decides the space before a '(' — "decimal(18, 2)" glues, "default (0)" does not.
+            bool sawSpace = false;
+            // Whether a line break stands between the definition and whatever ends it: a comment
+            // on the NEXT line is not this column's trailing comment, it annotates what follows.
+            bool sawNewline = false;
             while (!IsAtEnd())
             {
                 var raw = _tokens[_pos];
-                // Whitespace/newline: add a space only before non-paren, non-comma content
                 if (raw.Type is TokenType.Whitespace or TokenType.Newline)
-                {
-                    if (depth == 0)
-                    {
-                        // peek what follows
-                        int la = _pos + 1;
-                        while (la < _tokens.Count && _tokens[la].Type is TokenType.Whitespace or TokenType.Newline) la++;
-                        if (la < _tokens.Count && defTokens.Length > 0)
-                        {
-                            var nxt = _tokens[la].Type;
-                            if (nxt != TokenType.LeftParen && nxt != TokenType.Comma
-                                && nxt != TokenType.RightParen)
-                                defTokens.Append(' ');
-                        }
-                    }
-                    _pos++;
-                    continue;
-                }
-                if (raw.Type == TokenType.LeftParen)  { depth++; defTokens.Append('('); _pos++; continue; }
-                if (raw.Type == TokenType.RightParen)
-                {
-                    if (depth == 0) break;          // outer ) of CREATE TABLE
-                    depth--;
-                    defTokens.Append(')');
-                    _pos++;
-                    continue;
-                }
+                { sawSpace = true; sawNewline |= raw.Type == TokenType.Newline; _pos++; continue; }
+
                 if (raw.Type == TokenType.Comma && depth == 0) break; // column separator
                 // A comment is never part of the definition: it annotates the column and is
                 // taken below, so the comma can be emitted in front of it.
                 if (raw.Type is TokenType.LineComment or TokenType.BlockComment) break;
-                // Regular token — no extra space before/after ( or )
-                if (defTokens.Length > 0 && raw.Type == TokenType.Comma && depth > 0)
-                    defTokens.Append(", ");         // "decimal(18, 2)" — space after comma in type
-                else
-                    // Type/constraint keywords (int, varchar, not, null, default ...) lowercased.
-                    defTokens.Append(raw.Type == TokenType.Keyword ? raw.Value.ToLowerInvariant() : raw.Value);
+                if (raw.Type == TokenType.RightParen && depth == 0) break; // outer ) of the list
+
+                // Separator: none before ',' or ')' and none right after '(', a space before '('
+                // only where the author wrote one, a single space between everything else.
+                bool first = defTokens.Length == 0;
+                char last  = first ? ' ' : defTokens[defTokens.Length - 1];
+                bool noSpace = first
+                    || raw.Type is TokenType.Comma or TokenType.RightParen
+                    || last == '('
+                    || (raw.Type == TokenType.LeftParen && !sawSpace);
+                if (!noSpace) defTokens.Append(' ');
+                sawSpace = false;
+
+                if (raw.Type == TokenType.LeftParen)  depth++;
+                if (raw.Type == TokenType.RightParen) depth--;
+                // Type/constraint keywords (int, varchar, not, null, default ...) lowercased.
+                defTokens.Append(raw.Type == TokenType.Keyword ? raw.Value.ToLowerInvariant() : raw.Value);
+                sawNewline = false;
                 _pos++;
             }
 
-            // The comment can stand on either side of the separating comma.
-            var comment = TryTakeSameLineInlineComment();
-            // Consume depth-0 comma separator between columns
-            if (!IsAtEnd() && _tokens[_pos].Type == TokenType.Comma) _pos++;
-            comment ??= TryTakeSameLineInlineComment();
+            // The comment can stand on either side of the separating comma — but only on the
+            // column's own line.
+            var comment = sawNewline ? null : TryTakeSameLineInlineComment();
+            // Consume depth-0 comma separator between columns; a comment may follow it.
+            if (!IsAtEnd() && _tokens[_pos].Type == TokenType.Comma)
+            { _pos++; comment ??= TryTakeSameLineInlineComment(); }
 
             columns.Add(new ColumnDefNode
             {

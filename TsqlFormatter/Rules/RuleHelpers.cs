@@ -63,7 +63,9 @@ internal static class RuleHelpers
             BinaryExprNode b => EmitBinary(b, engine, indent),
             ParenExprNode p => $"({EmitExpr(p.Inner, engine, indent)})",
             ConditionGroupNode cg => EmitConditionGroup(cg, engine, indent),
-            OrderByItemNode ob => EmitExpr(ob.Expression, engine, indent) + (ob.Direction != null ? " " + ob.Direction : ""),
+            OrderByItemNode ob => EmitExpr(ob.Expression, engine, indent)
+                                  + (ob.Direction != null ? " " + ob.Direction : "")
+                                  + (ob.TrailingComment != null ? TrailingCommentSuffix(ob.TrailingComment) : ""),
             // A list item's own comments are rendered by the clause emitter (they need the
             // clause's indent); reached from elsewhere, only the expression matters.
             ListItemNode li => EmitExpr(li.Expression, engine, indent),
@@ -146,6 +148,20 @@ internal static class RuleHelpers
     /// </summary>
     public static string LineClosingCommentSuffix(string comment) =>
         comment.StartsWith("/*") ? $" {comment}" : $"{Tabs(2)}{comment}";
+
+    /// <summary>See <see cref="CommentText.AsInline"/>: a comment with code behind it on the
+    /// same line is rendered as a /* */ comment, whatever the author wrote.</summary>
+    public static string AsInlineComment(string comment) => CommentText.AsInline(comment);
+
+    /// <summary>
+    /// Appends a trailing comment to text that is already built. A /* */ comment glues to a
+    /// comma (the established list style: "a,/*note*/") but takes a single space after anything
+    /// else — a table alias, a keyword — where gluing would run it into the word before it.
+    /// </summary>
+    public static string AppendTrailing(string text, string comment) =>
+        comment.StartsWith("/*") && text.Length > 0 && text[text.Length - 1] != ','
+            ? $"{text} {comment}"
+            : text + TrailingCommentSuffix(comment);
 
     /// <summary>
     /// Splits a column's leading comments into two rendered parts: comments that take their own
@@ -257,15 +273,30 @@ internal static class RuleHelpers
         var t3 = Tabs(indent + 3);
         var sb = new System.Text.StringBuilder();
         sb.Append($"\n{t1}over (");
+        foreach (var c in w.LeadingComments) sb.Append($"\n{t2}{c}");
         AppendWindowList(sb, "partition by", w.PartitionBy, engine, t2, t3, indent + 3);
         AppendWindowList(sb, "order by",     w.OrderBy,     engine, t2, t3, indent + 3);
         // The frame run also holds the whitespace before ')' — only emit it when there is a
         // real clause (ROWS/RANGE …) in there.
         if (w.Frame.Any(t => t.Type is not (TokenType.Whitespace or TokenType.Newline)))
-            sb.Append($"\n{t2}{EmitRawTokens(w.Frame)}");
+            sb.Append($"\n{t2}{EmitRawTokens(w.Frame.Select(LowerFrameWord))}");
         sb.Append($"\n{t1})");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// The words of a window frame clause are fixed vocabulary, not identifiers, so they go to
+    /// lower case like every other keyword. They are not in the lexer's keyword list because
+    /// "row", "range" and "current" are perfectly good column names elsewhere.
+    /// </summary>
+    private static readonly System.Collections.Generic.HashSet<string> FrameWords =
+        new(StringComparer.OrdinalIgnoreCase)
+        { "rows", "range", "between", "and", "unbounded", "preceding", "following", "current", "row" };
+
+    private static Token LowerFrameWord(Token t) =>
+        t.Type is TokenType.Identifier or TokenType.Keyword && FrameWords.Contains(t.Value)
+            ? new Token(t.Type, t.Value.ToLowerInvariant(), t.Line, t.Column)
+            : t;
 
     private static void AppendWindowList(System.Text.StringBuilder sb, string keyword,
         List<AstNode> items, FormatterEngine engine, string keywordIndent, string itemIndent, int indent)
@@ -550,6 +581,8 @@ internal static class RuleHelpers
         }
         var withAlias = t.Alias != null ? $"{nameStr} as {t.Alias.Value}" : nameStr;
         var withHint  = t.HintNolock != null ? $"{withAlias} with ({t.HintNolock})" : withAlias;
+        // A comment written before the name keeps its place, in front of the table.
+        if (t.LeadingComment != null) withHint = $"{t.LeadingComment} {withHint}";
         return t.Pivot != null ? withHint + EmitPivot(t.Pivot, engine, indent) : withHint;
     }
 
@@ -647,8 +680,9 @@ internal static class RuleHelpers
         foreach (var c in join.LeadingComments)
             sb.Append($"\n{tabs}\t{c}");
 
-        sb.Append($"\n{tabs}\t{join.JoinType.ToLowerInvariant()} {EmitTableRef(join.Table, engine, indent + 1)}");
-        if (join.TrailingComment != null) sb.Append(TrailingCommentSuffix(join.TrailingComment));
+        var joinLine = $"{join.JoinType.ToLowerInvariant()} {EmitTableRef(join.Table, engine, indent + 1)}";
+        if (join.TrailingComment != null) joinLine = AppendTrailing(joinLine, join.TrailingComment);
+        sb.Append($"\n{tabs}\t{joinLine}");
 
         if (join.Conditions.Count == 0) return sb.ToString();
 

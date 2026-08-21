@@ -6,6 +6,24 @@ namespace TsqlFormatter.Core
 
 // ─── Base ────────────────────────────────────────────────────────────────────
 
+/// <summary>Comment text helpers shared by the parser and the emitters.</summary>
+public static class CommentText
+{
+    /// <summary>
+    /// Renders a comment that has to keep CODE BEHIND IT on the same line — between "left join"
+    /// and its table, between a table name and its column list. A -- comment cannot live there
+    /// (everything after it would be commented out), so it is rewritten as a /* */ comment. Text
+    /// that already contains "*/" is left as a -- comment: rewriting it would end the comment
+    /// early and change what the script means.
+    /// </summary>
+    public static string AsInline(string comment)
+    {
+        if (comment.StartsWith("/*")) return comment;
+        var text = comment.TrimStart('-').Trim();
+        return text.Contains("*/") ? comment : $"/*{text}*/";
+    }
+}
+
 public abstract class AstNode
 {
     /// <summary>
@@ -282,6 +300,9 @@ public sealed class TableRefNode : AstNode
     public string? HintNolock { get; init; }
     /// <summary>A -- comment on the same line as this table reference in a FROM clause.</summary>
     public string? TrailingComment { get; set; }
+    /// <summary>Comment written between the clause keyword (from / join) and the table name;
+    /// it stays there, in front of the name.</summary>
+    public string? LeadingComment { get; set; }
     /// <summary>Subquery used as a table source: (SELECT ...) AS alias</summary>
     public SubQueryNode? SubQuery { get; init; }
     /// <summary>Arguments for function-valued table sources: func(arg1, arg2) AS alias</summary>
@@ -368,6 +389,8 @@ public sealed class OrderByItemNode : AstNode
 {
     public AstNode Expression { get; init; } = null!;
     public string? Direction { get; init; }  // "asc" | "desc" | null
+    /// <summary>Comment written after this item on the same line.</summary>
+    public string? TrailingComment { get; set; }
 }
 
 public sealed class InExprNode : AstNode
@@ -433,6 +456,8 @@ public sealed class WindowSpecNode : AstNode
     public List<AstNode> PartitionBy { get; } = new();
     public List<AstNode> OrderBy { get; } = new();
     public List<Token> Frame { get; } = new();
+    /// <summary>Comments written on their own line(s) right after "over (", kept there.</summary>
+    public List<string> LeadingComments { get; } = new();
 }
 
 public sealed class FunctionCallNode : AstNode
@@ -580,6 +605,11 @@ public sealed class CreateTableNode : AstNode
 {
     public string TableName { get; init; } = "";
     public List<ColumnDefNode> Columns { get; } = new List<ColumnDefNode>();
+    /// <summary>Comment written between the table name and its column list; it stays there,
+    /// in front of the opening paren.</summary>
+    public string? NameComment { get; set; }
+    /// <summary>Standalone comments left after the last column, above the closing paren.</summary>
+    public List<string> CloseComments { get; } = new();
 }
 
 public sealed class DropTableNode : AstNode

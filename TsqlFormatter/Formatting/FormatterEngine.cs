@@ -108,7 +108,10 @@ public sealed class FormatterEngine
         foreach (var t in new Lexer(text).Tokenize())
         {
             if (t.Type is not (TokenType.LineComment or TokenType.BlockComment)) continue;
-            var key = t.Value.TrimEnd();
+            // Compared by TEXT, not by marker: a -- comment is allowed to come back as its
+            // /* */ equivalent where the layout needs code behind it on the same line
+            // (rule `cmt-inline`). Its content still has to be there, unchanged.
+            var key = CommentText.AsInline(t.Value.TrimEnd());
             counts[key] = counts.TryGetValue(key, out int n) ? n + 1 : 1;
         }
         return counts;
