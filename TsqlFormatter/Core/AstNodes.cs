@@ -486,6 +486,17 @@ public sealed class NotExprNode : AstNode
     public AstNode Inner { get; init; } = null!;
 }
 
+/// <summary>
+/// An operand with /* */ comments glued around it, the way the author wrote them:
+/// "between /*dateadd(month,-2,*/@from/*)*/ and @to" — commented-out code around a value.
+/// </summary>
+public sealed class InlineCommentedNode : AstNode
+{
+    public string? Before { get; set; }
+    public AstNode Inner { get; init; } = null!;
+    public string? After { get; set; }
+}
+
 /// <summary>A sign written in front of an operand: "+14", "-(a + b)".</summary>
 public sealed class UnaryExprNode : AstNode
 {

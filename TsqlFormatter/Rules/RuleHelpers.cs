@@ -82,6 +82,8 @@ internal static class RuleHelpers
             NotExprNode n => $"not {EmitExpr(n.Inner, engine, indent)}",
             // A sign binds to its operand with no gap: "+14", "-(a + b)".
             UnaryExprNode u => $"{u.Op.Value}{EmitExpr(u.Operand, engine, indent)}",
+            // Comments glued around an operand stay glued, exactly as written.
+            InlineCommentedNode ic => $"{ic.Before}{EmitExpr(ic.Inner, engine, indent)}{ic.After}",
             RawTokensNode rt => EmitRawTokens(rt.Tokens),
             _ => engine.Format(node, indent)
         };

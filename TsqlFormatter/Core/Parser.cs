@@ -1616,7 +1616,7 @@ public sealed class Parser
 
     private AstNode ParseMultiplicative()
     {
-        var left = ParsePrimary();
+        var left = AttachGluedBlockComment(ParsePrimary());
         left = ApplyCollate(left);
         while (true)
         {
@@ -1626,7 +1626,7 @@ public sealed class Parser
             if (op.Type is not (TokenType.Multiply or TokenType.Divide or TokenType.Percent))
             { Rewind(beforeComments, parked); break; }
             Advance();
-            var right = ApplyCollate(ParsePrimary());
+            var right = ApplyCollate(AttachGluedBlockComment(ParsePrimary()));
             left = new BinaryExprNode { Left = left, Op = op, Right = right, OpLeadingComment = comment };
         }
         return left;
@@ -1753,7 +1753,17 @@ public sealed class Parser
         // before reaching here; anything left over is parked and lifted to the statement, so an
         // annotation in an odd spot moves a line up instead of costing the whole script its
         // formatting. Parsing then continues with the operand that follows.
-        if (tok.Type is TokenType.LineComment or TokenType.BlockComment)
+        if (tok.Type == TokenType.BlockComment)
+        {
+            // A /* */ comment CAN stand in front of a value — commented-out code around an
+            // operand is a common idiom ("between /*dateadd(month,-2,*/@from/*)*/ and @to").
+            // It stays glued to the operand instead of being lifted above the statement.
+            var before = Advance().Value;
+            var operand = ParsePrimary();
+            if (_hoistComments) { _pendingComments.Add(before); return operand; }
+            return new InlineCommentedNode { Before = before, Inner = operand };
+        }
+        if (tok.Type == TokenType.LineComment)
         {
             _pendingComments.Add(Advance().Value);
             return ParsePrimary();
@@ -2777,6 +2787,21 @@ public sealed class Parser
 
     /// <summary>True when a newline (or the end of input) comes before the next meaningful token,
     /// i.e. the author broke the line here.</summary>
+    /// <summary>
+    /// Glues a /* */ comment written with NO space in front of it to the operand it follows
+    /// ("@from/*)*/"): commented-out code wrapped around a value. With a space in front it is an
+    /// ordinary trailing comment and belongs to whatever clause the operand sits in.
+    /// </summary>
+    private AstNode AttachGluedBlockComment(AstNode operand)
+    {
+        if (_pos >= _tokens.Count || _tokens[_pos].Type != TokenType.BlockComment) return operand;
+        var text = _tokens[_pos].Value;
+        _pos++;
+        if (_hoistComments) { _pendingComments.Add(text); return operand; }
+        if (operand is InlineCommentedNode ic && ic.After == null) { ic.After = text; return ic; }
+        return new InlineCommentedNode { Inner = operand, After = text };
+    }
+
     /// <summary>
     /// Takes a /* */ comment written where an operator is expected ("10 /* note */ / 2"), so the
     /// comment does not end the expression and leave "/ 2" behind as raw text. Only block

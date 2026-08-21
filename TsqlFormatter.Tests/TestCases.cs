@@ -1199,6 +1199,18 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── blockcmt: commented-out code glued around an operand ──────────────
+        new TestCase {
+            Rule = "blockcmt", Name = "comments glued around a value stay glued to it",
+            Input    = "select q.a\nfrom t as ug\nwhere d BETWEEN /*dateadd(month,-2,*/@from/*)*/ and @to",
+            Expected = "select\n\tq.a\nfrom t as ug\nwhere\n\td between /*dateadd(month,-2,*/@from/*)*/ and @to",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "comment glued in front of a value in a comparison",
+            Input    = "select a\nfrom t\nwhere x = /*old:*/1",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx = /*old:*/1",
+        },
+
         // ── stmtbound: a raw statement stops at the next statement's keyword ──
         new TestCase {
             Rule = "stmtbound", Name = "set after exec is its own statement",
