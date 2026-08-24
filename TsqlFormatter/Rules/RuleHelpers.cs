@@ -635,6 +635,7 @@ internal static class RuleHelpers
         var t1 = Tabs(indent + 1);
         var t2 = Tabs(indent + 2);
         var sb = new System.Text.StringBuilder();
+        foreach (var c in p.LeadingComments) sb.Append($"\n{t0}{c}");
         sb.Append($"\n{t0}{p.Kind} (");
         sb.Append($"\n{t1}{EmitExpr(p.Head, engine, indent + 1)}");
         if (p.HeadComment != null) sb.Append(LineClosingCommentSuffix(p.HeadComment));

@@ -328,6 +328,8 @@ public sealed class PivotNode : AstNode
     /// <summary>The IN (...) list, one entry per value.</summary>
     public List<AstNode> InValues { get; } = new();
     public Token? Alias { get; set; }
+    /// <summary>Standalone comments written between the source and the PIVOT keyword.</summary>
+    public List<string> LeadingComments { get; } = new();
     /// <summary>Comment written after the aggregate / value column.</summary>
     public string? HeadComment { get; set; }
     /// <summary>Comment written after the IN (...) list.</summary>

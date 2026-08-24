@@ -783,7 +783,7 @@ public sealed class Parser
                     break;
                 }
             }
-            } while (PeekIs(TokenType.Comma) && AdvanceCommaKeepingTrailingComment(node));
+            } while (PeekPastComments().Type == TokenType.Comma && AdvanceCommaKeepingTrailingComment(node));
         }
         if (Peek().IsKeyword("WHERE"))  { Advance(); node.WhereConditions.AddRange(ParseConditionList(isJoinOn: false)); }
         if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
@@ -907,8 +907,12 @@ public sealed class Parser
     /// </summary>
     private bool AdvanceCommaKeepingTrailingComment(SelectStatementNode node)
     {
+        // A comment written between the source and its comma belongs to the source before it —
+        // the same place the formatter puts one itself ("from t1 as a,   --note").
+        var beforeComma = CollectStandaloneComments();
         Advance(); // ,
-        var trailing = TryTakeSameLineInlineComment();
+        var trailing = TryTakeSameLineInlineComment()
+                       ?? (beforeComma.Count > 0 ? string.Join(" ", beforeComma) : null);
         if (trailing != null)
         {
             var last = node.FromClauses.Count > 0 ? node.FromClauses[^1] : null;
@@ -1378,8 +1382,12 @@ public sealed class Parser
 
         // Table hint: WITH (NOLOCK), WITH (INDEX(..)), etc. — capture raw hint text.
         string? hint = null;
-        if (Peek().IsKeyword("WITH") && PeekAt(1).Type == TokenType.LeftParen)
+        var hintComments = new List<string>();
+        if (PeekPastComments().IsKeyword("WITH") && PeekPastComments(1).Type == TokenType.LeftParen)
         {
+            // A comment before the hint must not hide it: read past the keyword, the whole
+            // statement stopped parsing and the script came back unformatted.
+            hintComments.AddRange(CollectStandaloneComments());
             Advance(); // WITH
             Advance(); // (
             var hb = new System.Text.StringBuilder();
@@ -1398,6 +1406,9 @@ public sealed class Parser
                 Advance();
             }
             hint = hb.ToString().Trim();
+            // A comment written before the hint has no place on the line: park it above the
+            // statement rather than lose it.
+            _pendingComments.AddRange(hintComments);
         }
 
         bool isOpenQuery = nameParts.Count == 1
@@ -1414,8 +1425,11 @@ public sealed class Parser
     /// </summary>
     private PivotNode? TryParsePivot()
     {
-        var kw = Peek();
+        var kw = PeekPastComments();
         if (!kw.IsKeyword("PIVOT") && !kw.IsKeyword("UNPIVOT")) return null;
+        // Comments between the source and PIVOT keep their own lines above the block; peeked at
+        // directly, they hid the keyword and the whole clause came out as raw text.
+        var leading = CollectStandaloneComments();
         Advance();
         Expect(TokenType.LeftParen);
         // ParsePrimary, not ParseExpression: the column after FOR is followed by IN, which the
@@ -1430,6 +1444,7 @@ public sealed class Parser
 
         var node = new PivotNode { Kind = kw.Value.ToLowerInvariant(), Head = head, ForColumn = forColumn,
                                    HeadComment = headComment };
+        node.LeadingComments.AddRange(leading);
         while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
         {
             node.InValues.Add(ParseExpression());
@@ -2557,6 +2572,22 @@ public sealed class Parser
         if (!PeekPastComments().IsKeyword(keyword)) return false;
         sink.AddRange(CollectStandaloneComments());
         return true;
+    }
+
+    /// <summary>Like <see cref="PeekPastComments()"/>, but skipping <paramref name="skip"/> more
+    /// meaningful tokens after the first — used to check "WITH (" past a comment.</summary>
+    private Token PeekPastComments(int skip)
+    {
+        int i = _pos, seen = 0;
+        while (i < _tokens.Count)
+        {
+            var t = _tokens[i];
+            if (Skippable.Contains(t.Type) || t.Type is TokenType.LineComment or TokenType.BlockComment)
+            { i++; continue; }
+            if (seen == skip) return t;
+            seen++; i++;
+        }
+        return new Token(TokenType.EndOfFile, string.Empty);
     }
 
     private Token PeekPastComments()

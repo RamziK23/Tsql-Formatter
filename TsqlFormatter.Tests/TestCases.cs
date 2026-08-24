@@ -1199,6 +1199,23 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        // ── a comment must not hide the clause that continues the FROM ────────
+        new TestCase {
+            Rule = "comments", Name = "comment before pivot keeps its line and the block is laid out",
+            Input    = "select a from (select b from s) as q\n--note\npivot (max(b) for c in ([1])) as p",
+            Expected = "select\n\ta\nfrom (\n\tselect\n\t\tb\n\tfrom s\n) as q\n--note\npivot (\n\tmax(b)\n\tfor c in (\n\t\t[1]\n\t)\n) as p",
+        },
+        new TestCase {
+            Rule = "comments", Name = "comment before a from-list comma stays with the source before it",
+            Input    = "select a from t1 as x\n--note\n, t2 as y",
+            Expected = "select\n\ta\nfrom t1 as x,\t\t--note\n\tt2 as y",
+        },
+        new TestCase {
+            Rule = "comments", Name = "comment before a table hint does not stop the parse",
+            Input    = "select a from t\n--note\nwith (nolock)",
+            Expected = "--note\nselect\n\ta\nfrom t with (nolock)",
+        },
+
         // ── the indent/placement rules block C promises, pinned down ──────────
         new TestCase {
             Rule = "blockcmt", Name = "glued block comment gets no tab of its own",
