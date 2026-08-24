@@ -754,9 +754,10 @@ public sealed class Parser
             {
             var fromTable = ParseTableRef();
             node.FromClauses.Add(fromTable);
-            // A -- comment on the SAME line as the FROM table stays attached to that line
-            // (rather than migrating to a PostFromComment or the following statement).
-            var fromTrailing = TryTakeSameLineComment();
+            // A comment on the SAME line as the FROM table stays attached to that line, a
+            // /* */ one as much as a -- one (rather than migrating to a PostFromComment or the
+            // following statement, which is where a block comment used to end up).
+            var fromTrailing = TryTakeSameLineInlineComment();
             if (fromTrailing != null) fromTable.TrailingComment = fromTrailing;
             // Collect joins, tolerating standalone comments between FROM and each JOIN.
             while (true)

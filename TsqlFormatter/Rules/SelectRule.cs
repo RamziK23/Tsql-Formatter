@@ -101,7 +101,7 @@ public sealed class SelectRule : IFormatterRule
                     var (body, comment) = sources[^1];
                     if (comment != null)
                     {
-                        body.Append($"{RuleHelpers.Tabs(2)}{comment}");
+                        RuleHelpers.AppendTrailing(body, comment);
                         sources[^1] = (body, null);
                     }
                     body.Append(RuleHelpers.FormatJoin(join, engine, indent));
@@ -111,9 +111,8 @@ public sealed class SelectRule : IFormatterRule
             for (int i = 0; i < sources.Count; i++)
             {
                 var (body, comment) = sources[i];
-                var text = body.ToString()
-                         + (i < sources.Count - 1 ? "," : "")
-                         + (comment != null ? $"{RuleHelpers.Tabs(2)}{comment}" : "");
+                var text = body.ToString() + (i < sources.Count - 1 ? "," : "");
+                if (comment != null) text = RuleHelpers.AppendTrailing(text, comment);
                 sb.Append(i == 0 ? $" {text}" : $"\n{tabs}\t{text}");
             }
         }

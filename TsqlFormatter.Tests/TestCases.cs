@@ -1199,6 +1199,12 @@ public static class TestCases
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
         },
 
+        new TestCase {
+            Rule = "fromcmt", Name = "block comment on the from line stays on it, like a -- one",
+            Input    = "select a\nfrom t  /* про t */\nwhere x = 1",
+            Expected = "select\n\ta\nfrom t /* про t */\nwhere\n\tx = 1",
+        },
+
         // ── a comment must not hide the clause that continues the FROM ────────
         new TestCase {
             Rule = "comments", Name = "comment before pivot keeps its line and the block is laid out",
