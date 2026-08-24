@@ -183,7 +183,9 @@ internal static class RuleHelpers
     private static string TrailingSeparator(char last, string comment)
     {
         if (!comment.StartsWith("/*")) return Tabs(2);
-        return last is ',' or '(' or '\n' or '\t' or ' ' ? "" : " ";
+        // Nothing to separate from at the start of a line; a single space everywhere else,
+        // including right after a comma or an opening paren.
+        return last is '\n' or '\t' or ' ' ? "" : " ";
     }
 
     /// <summary>
@@ -265,15 +267,16 @@ internal static class RuleHelpers
             string comma = isLast ? "" : ",";
 
             if (v is CommentedValueNode cv)
-                return $"{Tabs(indent + 1)}{EmitExpr(cv.Value, engine, indent)}{comma}{Tabs(2)}{cv.TrailingComment}";
+                return AppendTrailing($"{Tabs(indent + 1)}{EmitExpr(cv.Value, engine, indent)}{comma}",
+                                      cv.TrailingComment!);
 
             if (v is InValueGroupNode grp)
             {
                 // Multiple values sharing one comment
                 var vals = string.Join(", ", grp.Values.Select(gv => EmitExpr(gv, engine, indent)));
                 string leading  = grp.LeadingBlockComment  != null ? grp.LeadingBlockComment  : "";
-                string trailing = grp.TrailingLineComment  != null ? $"{Tabs(2)}{grp.TrailingLineComment}" : "";
-                return $"{Tabs(indent + 1)}{leading}{vals}{comma}{trailing}";
+                var text = $"{Tabs(indent + 1)}{leading}{vals}{comma}";
+                return grp.TrailingLineComment != null ? AppendTrailing(text, grp.TrailingLineComment) : text;
             }
 
             return $"{Tabs(indent + 1)}{EmitExpr(v, engine, indent)}{comma}";

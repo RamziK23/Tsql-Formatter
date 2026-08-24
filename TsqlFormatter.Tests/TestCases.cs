@@ -361,9 +361,9 @@ public static class TestCases
             Expected = "select\n\t*\nfrom a\nwhere\n\tid in (1, 2, 3, 4, 5, 6/*7,8,9,0*/, 1, 2, 3, 4)",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "block comment between columns trails the preceding column, no tab",
+            Rule = "blockcmt", Name = "block comment between columns trails the preceding column, a space out",
             Input    = "SELECT 'SELECT a.[x] FROM t WHERE a.[y] = 1' AS [sql_text], /* [Alias] = expr, INNER JOIN, declare @a int */ c.[id]\nFROM [dbo].[C] c",
-            Expected = "select\n\t'SELECT a.[x] FROM t WHERE a.[y] = 1' as [sql_text],/* [Alias] = expr, INNER JOIN, declare @a int */\n\tc.[id]\nfrom [dbo].[C] as c",
+            Expected = "select\n\t'SELECT a.[x] FROM t WHERE a.[y] = 1' as [sql_text], /* [Alias] = expr, INNER JOIN, declare @a int */\n\tc.[id]\nfrom [dbo].[C] as c",
         },
         new TestCase {
             Rule = "2.8", Name = "begin/end with declare and select, no extra end column",
@@ -928,7 +928,7 @@ public static class TestCases
         new TestCase {
             Rule = "blockcmt", Name = "one-line comment between columns: the break lands after it",
             Input    = "select a, /*x*/ b from t",
-            Expected = "select\n\ta,/*x*/\n\tb\nfrom t",
+            Expected = "select\n\ta, /*x*/\n\tb\nfrom t",
         },
 
         // ── OVER (…) is laid out as a list ───────────────────────────────────
@@ -986,12 +986,12 @@ public static class TestCases
         new TestCase {
             Rule = "blockcmt", Name = "multi-line comment from the column line: next column on its closing line",
             Input    = "select\nc.title, /*note\nnote*/ 12 as a\nfrom a as c",
-            Expected = "select\n\tc.title,/*note\nnote*/ 12 as a\nfrom a as c",
+            Expected = "select\n\tc.title, /*note\nnote*/ 12 as a\nfrom a as c",
         },
         new TestCase {
             Rule = "blockcmt", Name = "comment starting on the column line keeps its break",
             Input    = "select\nc.title, /*note\nnote*/\n12 as a\nfrom a as c",
-            Expected = "select\n\tc.title,/*note\nnote*/\n\t12 as a\nfrom a as c",
+            Expected = "select\n\tc.title, /*note\nnote*/\n\t12 as a\nfrom a as c",
         },
 
         // ── a comment on the join line must not hide the ON that follows ─────
@@ -1226,12 +1226,22 @@ public static class TestCases
         new TestCase {
             Rule = "blockcmt", Name = "glued block comment gets no tab of its own",
             Input    = "select a, /*n*/ b from t",
-            Expected = "select\n\ta,/*n*/\n\tb\nfrom t",
+            Expected = "select\n\ta, /*n*/\n\tb\nfrom t",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "block comment: glued after a comma, a space after anything else",
+            Rule = "blockcmt", Name = "comment after a comma in a broken IN list keeps its line",
+            Input    = "select a from t\nwhere g in (\n1607,\t\t--first\n1608,\t\t/*second*/\n1609\t\t--third\n)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tg in (\n\t\t1607,\t\t--first\n\t\t1608, /*second*/\n\t\t1609\t\t--third\n\t)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "comment with the next value behind it still leads that value",
+            Input    = "select * from a where id in (/*11,*/54,/*56,*/24,26)",
+            Expected = "select\n\t*\nfrom a\nwhere\n\tid in (/*11,*/54, /*56,*/24, 26)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment: one space, after a comma too",
             Input    = "update t /* про таблицу */\nset a = 1, /* про a */\nb = 2 /* про b */\nwhere x = 1",
-            Expected = "update t /* про таблицу */\nset\n\ta = 1,/* про a */\n\tb = 2 /* про b */\nwhere\n\tx = 1",
+            Expected = "update t /* про таблицу */\nset\n\ta = 1, /* про a */\n\tb = 2 /* про b */\nwhere\n\tx = 1",
         },
         new TestCase {
             Rule = "blockcmt", Name = "standalone block comment keeps its line at the list's indent",
@@ -1579,7 +1589,7 @@ public static class TestCases
         new TestCase {
             Rule = "blockcmt", Name = "block comment after a comma stays glued to the column before it",
             Input    = "select\na, /*note*/ b\nfrom t",
-            Expected = "select\n\ta,/*note*/\n\tb\nfrom t",
+            Expected = "select\n\ta, /*note*/\n\tb\nfrom t",
         },
         new TestCase {
             Rule = "linecmt", Name = "comment after distinct/top stays on the select line",

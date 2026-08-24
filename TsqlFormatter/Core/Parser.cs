@@ -1904,7 +1904,15 @@ public sealed class Parser
             if (_pos >= _tokens.Count) break;
             var t = _tokens[_pos].Type;
             if (t == TokenType.RightParen) break;
-            if (t == TokenType.Comma) { _pos++; continue; }
+            if (t == TokenType.Comma)
+            {
+                _pos++;
+                // A /* */ comment written after the comma and CLOSING its line annotates the value
+                // just listed — it stays on that value's line. One with the next value still
+                // behind it on the same line leads that value instead (pendingLead, below).
+                TakeCommentAfterInComma(list);
+                continue;
+            }
             // A /* */ block comment before a value belongs in front of THAT value — including the
             // very first one, which used to have no preceding value to glue to and was dropped.
             if (t == TokenType.BlockComment)
@@ -1946,6 +1954,29 @@ public sealed class Parser
             else                list.Add(new InValueGroupNode { LeadingBlockComment = pendingLead });
         }
         return list;
+    }
+
+    /// <summary>
+    /// Takes the /* */ comment that stands right after an IN-list comma and ends its line, and
+    /// keeps it with the value the comma closed. Without this it drifted down and glued itself in
+    /// front of the NEXT value, taking that value's line break with it.
+    /// </summary>
+    private void TakeCommentAfterInComma(List<AstNode> list)
+    {
+        if (list.Count == 0) return;
+        int i = _pos;
+        while (i < _tokens.Count && _tokens[i].Type == TokenType.Whitespace) i++;
+        if (i >= _tokens.Count || _tokens[i].Type != TokenType.BlockComment) return;
+        int j = i + 1;
+        while (j < _tokens.Count && _tokens[j].Type == TokenType.Whitespace) j++;
+        if (j < _tokens.Count && _tokens[j].Type is not (TokenType.Newline or TokenType.EndOfFile)) return;
+
+        var text = _tokens[i].Value;
+        _pos = i + 1;
+        if (_hoistComments) { _pendingComments.Add(text); return; }
+        list[^1] = list[^1] is CommentedValueNode cv
+            ? new CommentedValueNode { Value = cv.Value, TrailingComment = (cv.TrailingComment ?? "") + " " + text }
+            : new CommentedValueNode { Value = list[^1], TrailingComment = text };
     }
 
     /// <summary>Glues a transparent /* */ block comment onto the last parsed IN value.</summary>
