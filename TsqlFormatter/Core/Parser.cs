@@ -376,10 +376,24 @@ public sealed class Parser
         return list;
     }
 
+    /// <summary>
+    /// When the WHOLE condition of an IF / WHILE is one parenthesised expression, it is laid out
+    /// as a condition group: "(" stays on the keyword's line, the condition sits one tab in and
+    /// the ")" takes its own line. Conditions the author did not wrap keep the inline layout.
+    /// </summary>
+    private static List<AstNode> AsGroupIfFullyParenthesised(List<AstNode> conds)
+    {
+        if (conds.Count != 1 || conds[0] is not ConditionNode c || c.Expression is not ParenExprNode p)
+            return conds;
+        var group = new ConditionGroupNode();
+        group.Conditions.Add(new ConditionNode { Expression = p.Inner });
+        return new List<AstNode> { new ConditionNode { Expression = group, TrailingComment = c.TrailingComment } };
+    }
+
     private AstNode ParseIf()
     {
         Advance(); // IF
-        var conds = ParseConditionList(isJoinOn: false);
+        var conds = AsGroupIfFullyParenthesised(ParseConditionList(isJoinOn: false));
         var then = ParseStatement();
         AstNode? elseStmt = null; string? elseComment = null;
         if (Peek().IsKeyword("ELSE"))
@@ -398,7 +412,7 @@ public sealed class Parser
     private AstNode ParseWhile()
     {
         Advance(); // WHILE
-        var conds = ParseConditionList(isJoinOn: false);
+        var conds = AsGroupIfFullyParenthesised(ParseConditionList(isJoinOn: false));
         var body = ParseStatement();
         var n = new WhileNode { Body = body };
         n.Conditions.AddRange(conds);
@@ -1644,6 +1658,25 @@ public sealed class Parser
         return expr;
     }
 
+    /// <summary>
+    /// Consumes the ')' closing a parenthesised condition. When it is missing and what follows
+    /// can only start a new statement (or the input ends), the group is closed here rather than
+    /// failing the parse: "while (a <= b select 20" is a forgotten paren, and closing it before
+    /// the body is the only reading that makes the script valid. The paren is then printed, so
+    /// the result is valid T-SQL instead of the unformatted broken original.
+    /// </summary>
+    private void ExpectGroupClose()
+    {
+        if (PeekIs(TokenType.RightParen)) { Advance(); return; }
+        // Only when a real statement follows. At the end of the input the text is not broken,
+        // it is merely CUT SHORT — a partial selection whose rest lives outside it — and
+        // inventing a paren there would change a script the user can still see the whole of.
+        var next = Peek();
+        if (next.Type is not (TokenType.EndOfFile or TokenType.Semicolon) && IsStatementBoundary(next))
+            return;
+        Expect(TokenType.RightParen);
+    }
+
     private AstNode ParsePrimary()
     {
         var tok = Peek();
@@ -1685,10 +1718,10 @@ public sealed class Parser
                     group.Conditions.Add(new ConditionNode { LogicalOp = op, Expression = next, TrailingComment = nextComment }
                         .Tap(c => c.LeadingComments.AddRange(nextLeading)));
                 }
-                Expect(TokenType.RightParen);
+                ExpectGroupClose();
                 return group;
             }
-            Expect(TokenType.RightParen);
+            ExpectGroupClose();
             return new ParenExprNode { Inner = inner };
         }
 

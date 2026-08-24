@@ -1240,6 +1240,16 @@ public static class TestCases
             Expected = "if (\n\t@a = 1\n\tor @b = 2\n)\nprint 1",
         },
         new TestCase {
+            Rule = "if", Name = "a fully parenthesised condition is laid out as a group",
+            Input    = "if (@a = 1)\nprint 1",
+            Expected = "if (\n\t@a = 1\n)\nprint 1",
+        },
+        new TestCase {
+            Rule = "if", Name = "unclosed paren before the body is closed, not left unformatted",
+            Input    = "while (webcar.dbo.datafirst(@yy, @mm) <= webcar.dbo.datafirst(year(getdate()), month(getdate())) select 20",
+            Expected = "while (\n\twebcar.dbo.datafirst(@yy, @mm) <= webcar.dbo.datafirst(year(getdate()), month(getdate()))\n)\nselect\n\t20",
+        },
+        new TestCase {
             Rule = "if", Name = "group in a continuation condition closes one tab in",
             Input    = "if @x = 0 and (@a = 1\nor @b = 2)\nprint 1",
             Expected = "if @x = 0\n\tand (\n\t\t@a = 1\n\t\tor @b = 2\n\t)\nprint 1",
