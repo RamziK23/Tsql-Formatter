@@ -744,8 +744,12 @@ public sealed class Parser
             while (PeekPastComments().Type == TokenType.Dot)
             { ParkComment(); nameSb.Append(Advance().Value); ParkComment(); nameSb.Append(Advance().Value); }
             node.IntoTable = nameSb.ToString();
+            // A comment on the INTO line stays on it ("into #wru/*note*/"). Left in the stream it
+            // hid the FROM behind it and the rest of the statement fell out into raw text.
+            node.IntoComment = TryTakeSameLineInlineComment(out bool intoGlued);
+            node.IntoCommentGlued = intoGlued;
         }
-        if (Peek().IsKeyword("FROM"))
+        if (PeekClause("FROM", node.PreFromComments))
         {
             Advance();
             // FROM may list several sources separated by commas (the old-style cross join):
@@ -757,8 +761,12 @@ public sealed class Parser
             // A comment on the SAME line as the FROM table stays attached to that line, a
             // /* */ one as much as a -- one (rather than migrating to a PostFromComment or the
             // following statement, which is where a block comment used to end up).
-            var fromTrailing = TryTakeSameLineInlineComment();
-            if (fromTrailing != null) fromTable.TrailingComment = fromTrailing;
+            var fromTrailing = TryTakeSameLineInlineComment(out bool fromGlued);
+            if (fromTrailing != null)
+            {
+                fromTable.TrailingComment = fromTrailing;
+                fromTable.TrailingCommentGlued = fromGlued;
+            }
             // Collect joins, tolerating standalone comments between FROM and each JOIN.
             while (true)
             {
@@ -2814,14 +2822,22 @@ public sealed class Parser
         return val;
     }
 
-    private string? TryTakeSameLineInlineComment()
+    private string? TryTakeSameLineInlineComment() => TryTakeSameLineInlineComment(out _);
+
+    /// <summary>
+    /// Same, but also reports whether the author wrote the comment glued to the code before it
+    /// ("as u/*note*/" — no space, block comment). A glued comment stays glued on output.
+    /// </summary>
+    private string? TryTakeSameLineInlineComment(out bool glued)
     {
+        glued = false;
         int i = _pos;
         while (i < _tokens.Count && _tokens[i].Type == TokenType.Whitespace) i++;
         if (i < _tokens.Count &&
             (_tokens[i].Type == TokenType.LineComment || _tokens[i].Type == TokenType.BlockComment))
         {
             var val = _tokens[i].Value;
+            glued = i == _pos && _tokens[i].Type == TokenType.BlockComment;
             _pos = i + 1;
             if (_hoistComments) { _pendingComments.Add(val); return null; }
             return val;

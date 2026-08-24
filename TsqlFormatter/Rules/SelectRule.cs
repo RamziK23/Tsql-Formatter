@@ -77,7 +77,12 @@ public sealed class SelectRule : IFormatterRule
 
         // ── INTO (SELECT ... INTO #tbl) ───────────────────────────────────────
         if (sel.IntoTable != null)
-            sb.Append($"\n{tabs}into {sel.IntoTable}");
+        {
+            var into = $"{tabs}into {sel.IntoTable}";
+            if (sel.IntoComment != null)
+                into = RuleHelpers.AppendTrailing(into, sel.IntoComment, sel.IntoCommentGlued);
+            sb.Append($"\n{into}");
+        }
 
         // ── FROM ──────────────────────────────────────────────────────────────
         if (sel.FromClauses.Count > 0)
@@ -87,22 +92,23 @@ public sealed class SelectRule : IFormatterRule
             // source belong to it. The first source stays on the from line, each further one goes
             // on its own line one tab in, and the comma closes the source before it — after its
             // joins, and before its trailing -- comment so the comma is never commented out.
-            var sources = new List<(StringBuilder Body, string? Comment)>();
+            var sources = new List<(StringBuilder Body, string? Comment, bool Glued)>();
             foreach (var clause in sel.FromClauses)
             {
                 if (clause is TableRefNode tref)
                     sources.Add((new StringBuilder(RuleHelpers.EmitTableRef(tref, engine, indent)),
-                                 tref.TrailingComment));
+                                 tref.TrailingComment, tref.TrailingCommentGlued));
                 else if (clause is JoinNode join)
                 {
-                    if (sources.Count == 0) sources.Add((new StringBuilder(), null));
+                    if (sources.Count == 0) sources.Add((new StringBuilder(), null, false));
                     // A join lands after the source's comment, on its own line, so the comment
                     // stays where it was written.
-                    var (body, comment) = sources[^1];
+                    var (body, comment, glued) = sources[^1];
                     if (comment != null)
                     {
-                        RuleHelpers.AppendTrailing(body, comment);
-                        sources[^1] = (body, null);
+                        if (glued && comment.StartsWith("/*")) body.Append(comment);
+                        else RuleHelpers.AppendTrailing(body, comment);
+                        sources[^1] = (body, null, false);
                     }
                     body.Append(RuleHelpers.FormatJoin(join, engine, indent));
                 }
@@ -110,9 +116,12 @@ public sealed class SelectRule : IFormatterRule
 
             for (int i = 0; i < sources.Count; i++)
             {
-                var (body, comment) = sources[i];
+                var (body, comment, glued) = sources[i];
                 var text = body.ToString() + (i < sources.Count - 1 ? "," : "");
-                if (comment != null) text = RuleHelpers.AppendTrailing(text, comment);
+                // The comma closes the source, so a comment the author glued to the source name
+                // can no longer be glued — it follows the comma the usual way.
+                if (comment != null)
+                    text = RuleHelpers.AppendTrailing(text, comment, glued && i == sources.Count - 1);
                 sb.Append(i == 0 ? $" {text}" : $"\n{tabs}\t{text}");
             }
         }

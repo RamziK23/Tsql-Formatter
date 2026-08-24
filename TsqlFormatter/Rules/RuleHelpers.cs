@@ -160,12 +160,18 @@ internal static class RuleHelpers
     public static string AsInlineComment(string comment) => CommentText.AsInline(comment);
 
     /// <summary>
-    /// Appends a trailing comment to text that is already built. A /* */ comment glues to a
-    /// comma (the established list style: "a,/*note*/") but takes a single space after anything
-    /// else — a table alias, a keyword — where gluing would run it into the word before it.
+    /// Appends a trailing comment to text that is already built: a -- comment two tabs out, a
+    /// /* */ comment after a single space (nothing at the start of a line).
     /// </summary>
     public static string AppendTrailing(string text, string comment) =>
         text + TrailingSeparator(text.Length > 0 ? text[text.Length - 1] : '\n', comment) + comment;
+
+    /// <summary>
+    /// Same, but keeps a /* */ comment the author wrote glued to the code glued ("into #wru/*n*/").
+    /// The source decides: with a space in front it keeps the space, without one it stays flush.
+    /// </summary>
+    public static string AppendTrailing(string text, string comment, bool glued) =>
+        glued && comment.StartsWith("/*") ? text + comment : AppendTrailing(text, comment);
 
     /// <summary>Same, appending to a StringBuilder that already holds the line.</summary>
     public static void AppendTrailing(System.Text.StringBuilder sb, string comment)
@@ -514,8 +520,9 @@ internal static class RuleHelpers
                     lines.Add($"{Tabs(indent)}{lc}");
                 string prefix = cond.LogicalOp != null ? $"{cond.LogicalOp} " : "";
                 string expr   = EmitExpr(cond.Expression, engine, indent);
-                string cmt    = cond.TrailingComment != null ? $" {cond.TrailingComment}" : "";
-                lines.Add($"{Tabs(indent)}{prefix}{expr}{cmt}");
+                string line   = $"{Tabs(indent)}{prefix}{expr}";
+                if (cond.TrailingComment != null) line = AppendTrailing(line, cond.TrailingComment);
+                lines.Add(line);
             }
             else
             {
@@ -550,8 +557,9 @@ internal static class RuleHelpers
                 lines.AddRange(cond.LeadingComments);
                 string prefix = cond.LogicalOp != null ? $"{cond.LogicalOp} " : "";
                 string expr   = EmitExpr(cond.Expression, engine, lineIndent);
-                string cmt    = cond.TrailingComment != null ? $" {cond.TrailingComment}" : "";
-                lines.Add($"{prefix}{expr}{cmt}");
+                string line   = $"{prefix}{expr}";
+                if (cond.TrailingComment != null) line = AppendTrailing(line, cond.TrailingComment);
+                lines.Add(line);
             }
             else
             {
@@ -731,8 +739,9 @@ internal static class RuleHelpers
 
         if (join.Conditions[0] is ConditionNode first)
         {
-            string firstCmt = first.TrailingComment != null ? $" {first.TrailingComment}" : "";
-            sb.Append($" {EmitExpr(first.Expression, engine, indent + 2)}{firstCmt}");
+            var firstLine = $" {EmitExpr(first.Expression, engine, indent + 2)}";
+            if (first.TrailingComment != null) firstLine = AppendTrailing(firstLine, first.TrailingComment);
+            sb.Append(firstLine);
             // Remaining conditions on new lines
             foreach (var c in join.Conditions.Skip(1))
             {
@@ -742,8 +751,9 @@ internal static class RuleHelpers
                     foreach (var lc in rest.LeadingComments)
                         sb.Append($"\n{tabs}\t\t{lc}");
                     string prefix = rest.LogicalOp != null ? $"{rest.LogicalOp} " : "";
-                    string cmt    = rest.TrailingComment != null ? $" {rest.TrailingComment}" : "";
-                    sb.Append($"\n{tabs}\t\t{prefix}{EmitExpr(rest.Expression, engine, indent + 2)}{cmt}");
+                    var line = $"{tabs}\t\t{prefix}{EmitExpr(rest.Expression, engine, indent + 2)}";
+                    if (rest.TrailingComment != null) line = AppendTrailing(line, rest.TrailingComment);
+                    sb.Append($"\n{line}");
                 }
             }
         }

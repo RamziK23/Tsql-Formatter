@@ -116,6 +116,11 @@ public sealed class SelectStatementNode : AstNode
     public bool IsDistinct { get; init; }
     /// <summary>Target of SELECT ... INTO #tbl (table name), or null.</summary>
     public string? IntoTable { get; set; }
+    /// <summary>Comment written on the INTO line, after the target.</summary>
+    public string? IntoComment { get; set; }
+    /// <summary>True when the author wrote that comment glued to the table name
+    /// ("into #wru/*note*/"); it then stays glued.</summary>
+    public bool IntoCommentGlued { get; set; }
     public List<SelectColumnNode> Columns { get; } = new();
     public List<AstNode> FromClauses { get; } = new();
     public List<AstNode> WhereConditions { get; } = new();
@@ -300,6 +305,9 @@ public sealed class TableRefNode : AstNode
     public string? HintNolock { get; init; }
     /// <summary>A -- comment on the same line as this table reference in a FROM clause.</summary>
     public string? TrailingComment { get; set; }
+    /// <summary>True when the author wrote that comment glued to the source ("as u/*note*/");
+    /// it then stays glued.</summary>
+    public bool TrailingCommentGlued { get; set; }
     /// <summary>Comment written between the clause keyword (from / join) and the table name;
     /// it stays there, in front of the name.</summary>
     public string? LeadingComment { get; set; }

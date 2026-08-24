@@ -1660,6 +1660,38 @@ public static class TestCases
             Input    = "select a from t1 as a inner join u on u.id = a.id, t2 as b",
             Expected = "select\n\ta\nfrom t1 as a\n\tinner join u\n\t\ton u.id = a.id,\n\tt2 as b",
         },
+
+        // ── blockcmt: a comment glued to INTO / to a FROM source stays glued ──
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment glued to the into table stays glued and lets from through",
+            Input    = "select a\ninto #t/*note*/\nfrom dbo.u as u",
+            Expected = "select\n\ta\ninto #t/*note*/\nfrom dbo.u as u",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "a space before the into comment is kept as one space",
+            Input    = "select a\ninto #t\t\t/*note*/\nfrom dbo.u as u",
+            Expected = "select\n\ta\ninto #t /*note*/\nfrom dbo.u as u",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "block comment glued to the from source stays glued before its joins",
+            Input    = "select a\nfrom dbo.u as u/*src*/\nleft join dbo.g as g on g.id = u.id",
+            Expected = "select\n\ta\nfrom dbo.u as u/*src*/\n\tleft join dbo.g as g\n\t\ton g.id = u.id",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "a glued source comment gives way to the comma that closes the source",
+            Input    = "select a\nfrom t1 as a/*one*/, t2 as b",
+            Expected = "select\n\ta\nfrom t1 as a, /*one*/\n\tt2 as b",
+        },
+        new TestCase {
+            Rule = "cmt", Name = "line comment closing a condition group is two tabs out",
+            Input    = "select a\nfrom t\nwhere\n(x = 1\nor x = 2\n) -- note\nand y = 3",
+            Expected = "select\n\ta\nfrom t\nwhere\n\t(\n\t\tx = 1\n\t\tor x = 2\n\t)\t\t-- note\n\tand y = 3",
+        },
+        new TestCase {
+            Rule = "cmt", Name = "line comment closing an in-list group inside a join condition",
+            Input    = "select wrg.cityid\ninto #wru/*c1*/\nfrom dbo.wru as u/*c2*/\nleft join dbo.ug as g\non g.user_id = u.crm_userid\nand g.group_id in (\n1607,\t\t--a\n1608, /*b*/\n1730\t\t--c\n) -- groups\nand g.date_from <= u.dtimeTo",
+            Expected = "select\n\twrg.cityid\ninto #wru/*c1*/\nfrom dbo.wru as u/*c2*/\n\tleft join dbo.ug as g\n\t\ton g.user_id = u.crm_userid\n\t\tand g.group_id in (\n\t\t\t1607,\t\t--a\n\t\t\t1608, /*b*/\n\t\t\t1730\t\t--c\n\t\t)\t\t-- groups\n\t\tand g.date_from <= u.dtimeTo",
+        },
     };
 }
 
