@@ -41,7 +41,7 @@ public sealed class InsertRule : IFormatterRule
             }
             sb.Append($"{tabs})");
             if (ins.ColumnsComment != null)
-                sb.Append(RuleHelpers.TrailingCommentSuffix(ins.ColumnsComment));
+                RuleHelpers.AppendTrailing(sb, ins.ColumnsComment);
         }
 
         if (ins.Source is ValuesNode vn)
@@ -54,7 +54,7 @@ public sealed class InsertRule : IFormatterRule
                 if (r < vn.Rows.Count - 1) sb.Append(",");
                 // The row's comment follows its comma, never precedes it.
                 if (r < vn.RowComments.Count && vn.RowComments[r] != null)
-                    sb.Append(RuleHelpers.TrailingCommentSuffix(vn.RowComments[r]!));
+                    RuleHelpers.AppendTrailing(sb, vn.RowComments[r]!);
             }
         }
         else if (ins.Source != null)

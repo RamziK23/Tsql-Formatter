@@ -36,7 +36,7 @@ public sealed class DeclareRule : IFormatterRule
                 sb.Append(RuleHelpers.EmitColumnDefs(v.TableColumns, indent));
                 sb.Append($"{tabs})");
                 if (i < d.Variables.Count - 1) sb.Append(",");
-                if (v.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(v.TrailingComment));
+                if (v.TrailingComment != null) RuleHelpers.AppendTrailing(sb, v.TrailingComment);
                 continue;
             }
             var dataType = RuleHelpers.EmitTypeTokens(v.DataType);
@@ -45,7 +45,7 @@ public sealed class DeclareRule : IFormatterRule
                 : "";
             sb.Append($"{lead}{v.Variable.Value} {dataType}{init}");
             if (i < d.Variables.Count - 1) sb.Append(",");
-            if (v.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(v.TrailingComment));
+            if (v.TrailingComment != null) RuleHelpers.AppendTrailing(sb, v.TrailingComment);
         }
 
         return sb.ToString();

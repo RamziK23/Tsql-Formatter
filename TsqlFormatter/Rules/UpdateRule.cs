@@ -29,7 +29,7 @@ public sealed class UpdateRule : IFormatterRule
         sb.Append($"{tabs}update {RuleHelpers.EmitTableRef(upd.Table, engine, indent)}");
         // A comment on the update line stays on it; comments written on their own line before
         // SET keep their own lines. Neither may hide the SET behind it.
-        if (upd.TargetComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(upd.TargetComment));
+        if (upd.TargetComment != null) RuleHelpers.AppendTrailing(sb, upd.TargetComment);
         foreach (var c in upd.PreSetComments) sb.Append($"\n{tabs}{c}");
         sb.Append($"\n{tabs}set");
 
@@ -42,7 +42,7 @@ public sealed class UpdateRule : IFormatterRule
             // The comma closes the assignment BEFORE its comment — inside the comment it would be
             // commented out, leaving two assignments with no separator between them.
             if (i < upd.Assignments.Count - 1) sb.Append(",");
-            if (a.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(a.TrailingComment));
+            if (a.TrailingComment != null) RuleHelpers.AppendTrailing(sb, a.TrailingComment);
         }
 
         // FROM / JOINs

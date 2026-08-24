@@ -32,7 +32,8 @@ public sealed class DeleteRule : IFormatterRule
             // FROM keeps its place instead: it closes the delete line and the clause moves down.
             if (del.PreFromComments.Count > 0)
             {
-                sb.Append($"{tabs}delete{RuleHelpers.TrailingCommentSuffix(del.PreFromComments[0])}");
+                sb.Append($"{tabs}delete");
+                RuleHelpers.AppendTrailing(sb, del.PreFromComments[0]);
                 foreach (var c in del.PreFromComments.Skip(1)) sb.Append($"\n{tabs}{c}");
                 sb.Append($"\n{tabs}from {RuleHelpers.EmitTableRef(del.Table, engine, indent)}");
             }
@@ -54,7 +55,7 @@ public sealed class DeleteRule : IFormatterRule
 
         // A comment on the delete line stays on it — a -- comment offset by two tabs, a /* */
         // comment glued, exactly like a trailing comment anywhere else.
-        if (del.TargetComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(del.TargetComment));
+        if (del.TargetComment != null) RuleHelpers.AppendTrailing(sb, del.TargetComment);
         if (!fromWritten)
             foreach (var c in del.PreFromComments) sb.Append($"\n{tabs}{c}");
 

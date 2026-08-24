@@ -36,10 +36,10 @@ public sealed class MergeRule : IFormatterRule
 
         var into = m.HasInto ? "into " : "";
         sb.Append($"{tabs}merge {into}{RuleHelpers.EmitTableRef(m.Target, engine, indent)}");
-        if (m.TargetComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(m.TargetComment));
+        if (m.TargetComment != null) RuleHelpers.AppendTrailing(sb, m.TargetComment);
 
         sb.Append($"\n{tabs}using {RuleHelpers.EmitTableRef(m.Source, engine, indent)}");
-        if (m.SourceComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(m.SourceComment));
+        if (m.SourceComment != null) RuleHelpers.AppendTrailing(sb, m.SourceComment);
 
         // ON: first condition on the "on" line, the rest one tab further — the JOIN layout.
         for (int i = 0; i < m.OnConditions.Count; i++)
@@ -65,19 +65,19 @@ public sealed class MergeRule : IFormatterRule
             }
             if (w.ConditionComment != null) sb.Append(RuleHelpers.LineClosingCommentSuffix(w.ConditionComment));
             sb.Append($"\n{tabs}then");
-            if (w.ThenComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(w.ThenComment));
+            if (w.ThenComment != null) RuleHelpers.AppendTrailing(sb, w.ThenComment);
             sb.Append(EmitAction(w, engine, indent + 1));
         }
 
         if (m.OutputTokens != null)
         {
             sb.Append($"\n{tabs}{RuleHelpers.EmitRawTokens(m.OutputTokens)}");
-            if (m.OutputComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(m.OutputComment));
+            if (m.OutputComment != null) RuleHelpers.AppendTrailing(sb, m.OutputComment);
         }
         if (m.OutputIntoTokens != null)
         {
             sb.Append($"\n{tabs}{RuleHelpers.EmitRawTokens(m.OutputIntoTokens)}");
-            if (m.OutputIntoComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(m.OutputIntoComment));
+            if (m.OutputIntoComment != null) RuleHelpers.AppendTrailing(sb, m.OutputIntoComment);
         }
 
         return sb.ToString();
@@ -100,7 +100,7 @@ public sealed class MergeRule : IFormatterRule
                     var value  = RuleHelpers.EmitExpr(a.Value,  engine, indent + 1);
                     sb.Append($"\n{RuleHelpers.Tabs(indent + 1)}{target} = {value}");
                     if (i < w.Assignments.Count - 1) sb.Append(",");
-                    if (a.TrailingComment != null) sb.Append(RuleHelpers.TrailingCommentSuffix(a.TrailingComment));
+                    if (a.TrailingComment != null) RuleHelpers.AppendTrailing(sb, a.TrailingComment);
                 }
                 break;
 
@@ -127,7 +127,7 @@ public sealed class MergeRule : IFormatterRule
                         sb.Append($"\n{RuleHelpers.Tabs(indent + 1)}({vals})");
                         if (r < vn.Rows.Count - 1) sb.Append(",");
                         if (r < vn.RowComments.Count && vn.RowComments[r] != null)
-                            sb.Append(RuleHelpers.TrailingCommentSuffix(vn.RowComments[r]!));
+                            RuleHelpers.AppendTrailing(sb, vn.RowComments[r]!);
                     }
                 }
                 break;

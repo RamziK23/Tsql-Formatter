@@ -54,20 +54,21 @@ public sealed class SelectRule : IFormatterRule
             var comma   = i < sel.Columns.Count - 1 ? "," : "";
             // Rule 4.1.2: comma goes BEFORE the trailing comment. A -- comment is offset by
             // two tabs; a /* */ block comment glues directly (transparent).
-            var comment = col.TrailingComment != null ? RuleHelpers.TrailingCommentSuffix(col.TrailingComment) : "";
             // Leading comments: -- line comments each on their own line above the column;
             // /* */ block comments inline before the expression.
             var (lineLead, blockLead) = RuleHelpers.SplitLeadingComments(col.LeadingComments, $"{tabs}\t");
+            var body = $"{blockLead}{colStr}{alias}{comma}";
+            if (col.TrailingComment != null) body = RuleHelpers.AppendTrailing(body, col.TrailingComment);
             // The previous column's /* */ comment had no line break after it: this column carries
             // on that line, the way it was written.
             bool continuesLine = i > 0 && !sel.Columns[i - 1].TrailingBreakAfter
                                        && col.LeadingComments.Count == 0;
             if (inlineFirst && i == 0)
-                sb.Append($" {blockLead}{colStr}{alias}{comma}{comment}");
+                sb.Append($" {body}");
             else if (continuesLine)
-                sb.Append($" {blockLead}{colStr}{alias}{comma}{comment}");
+                sb.Append($" {body}");
             else
-                sb.Append($"\n{lineLead}{tabs}\t{blockLead}{colStr}{alias}{comma}{comment}");
+                sb.Append($"\n{lineLead}{tabs}\t{body}");
         }
 
         // Comments written between the column list and INTO/FROM stay there.

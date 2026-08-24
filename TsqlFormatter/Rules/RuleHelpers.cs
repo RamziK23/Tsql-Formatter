@@ -63,9 +63,11 @@ internal static class RuleHelpers
             BinaryExprNode b => EmitBinary(b, engine, indent),
             ParenExprNode p => $"({EmitExpr(p.Inner, engine, indent)})",
             ConditionGroupNode cg => EmitConditionGroup(cg, engine, indent),
-            OrderByItemNode ob => EmitExpr(ob.Expression, engine, indent)
-                                  + (ob.Direction != null ? " " + ob.Direction : "")
-                                  + (ob.TrailingComment != null ? TrailingCommentSuffix(ob.TrailingComment) : ""),
+            OrderByItemNode ob => ob.TrailingComment != null
+                                  ? AppendTrailing(EmitExpr(ob.Expression, engine, indent)
+                                        + (ob.Direction != null ? " " + ob.Direction : ""), ob.TrailingComment)
+                                  : EmitExpr(ob.Expression, engine, indent)
+                                        + (ob.Direction != null ? " " + ob.Direction : ""),
             // A list item's own comments are rendered by the clause emitter (they need the
             // clause's indent); reached from elsewhere, only the expression matters.
             ListItemNode li => EmitExpr(li.Expression, engine, indent),
@@ -132,6 +134,8 @@ internal static class RuleHelpers
         // their content would scramble hand-aligned dynamic SQL and shift -- comments inside the
         // string. Only keyword literals are case-normalized.
         var text = l.Token.Type == TokenType.Keyword ? l.Token.Value.ToLowerInvariant() : l.Token.Value;
+        // A comment the author glued to a VALUE stays glued to it (rule `blockcmt`); the space
+        // rule applies to comments that trail a clause, not a literal.
         return l.TrailingComment != null ? $"{text}{TrailingCommentSuffix(l.TrailingComment)}" : text;
     }
 
@@ -161,9 +165,26 @@ internal static class RuleHelpers
     /// else — a table alias, a keyword — where gluing would run it into the word before it.
     /// </summary>
     public static string AppendTrailing(string text, string comment) =>
-        comment.StartsWith("/*") && text.Length > 0 && text[text.Length - 1] != ','
-            ? $"{text} {comment}"
-            : text + TrailingCommentSuffix(comment);
+        text + TrailingSeparator(text.Length > 0 ? text[text.Length - 1] : '\n', comment) + comment;
+
+    /// <summary>Same, appending to a StringBuilder that already holds the line.</summary>
+    public static void AppendTrailing(System.Text.StringBuilder sb, string comment)
+    {
+        sb.Append(TrailingSeparator(sb.Length > 0 ? sb[sb.Length - 1] : '\n', comment));
+        sb.Append(comment);
+    }
+
+    /// <summary>
+    /// What separates a trailing comment from the text before it. A -- comment always takes the
+    /// two-tab gap. A /* */ comment glues to a separator it annotates — a comma or an opening
+    /// paren — and takes a single space after anything else; at the start of a line it needs
+    /// nothing.
+    /// </summary>
+    private static string TrailingSeparator(char last, string comment)
+    {
+        if (!comment.StartsWith("/*")) return Tabs(2);
+        return last is ',' or '(' or '\n' or '\t' or ' ' ? "" : " ";
+    }
 
     /// <summary>
     /// Splits a column's leading comments into two rendered parts: comments that take their own
@@ -345,7 +366,7 @@ internal static class RuleHelpers
         // Broken across lines, the comma comes first and the comment follows it in the usual
         // trailing style (a -- comment two tabs out, a /* */ one glued).
         string ArgCommentAfterComma(int i) =>
-            RawArgComment(i) is string c ? TrailingCommentSuffix(c) : "";
+            RawArgComment(i) is string c ? AppendTrailing("", c) : "";
         bool anyLineComment = fn.ArgumentComments.Any(c => c != null && c.StartsWith("--"));
 
         bool isCast = !anyLineComment
@@ -425,7 +446,7 @@ internal static class RuleHelpers
         if (ce.InputExpr != null)
             sb.Append($" {EmitExpr(ce.InputExpr, engine, indent)}");
         // A comment written on the case line stays on it.
-        if (ce.HeaderComment != null) sb.Append(TrailingCommentSuffix(ce.HeaderComment));
+        if (ce.HeaderComment != null) AppendTrailing(sb, ce.HeaderComment);
 
         foreach (var wc in ce.WhenClauses)
         {
@@ -624,7 +645,7 @@ internal static class RuleHelpers
             sb.Append($"\n{t2}{EmitExpr(p.InValues[i], engine, indent + 2)}{comma}");
         }
         sb.Append($"\n{t1})");
-        if (p.InComment != null) sb.Append(TrailingCommentSuffix(p.InComment));
+        if (p.InComment != null) AppendTrailing(sb, p.InComment);
         sb.Append($"\n{t0})");
         if (p.Alias != null) sb.Append($" as {p.Alias.Value}");
         return sb.ToString();
@@ -666,9 +687,10 @@ internal static class RuleHelpers
             var col   = columns[i];
             var comma = i < columns.Count - 1 ? "," : "";
             foreach (var c in col.LeadingComments) sb.Append($"{tabs}\t{c}\n");
-            var comment = col.TrailingComment != null ? TrailingCommentSuffix(col.TrailingComment) : "";
             // Column name preserves original case; definition kept as-is
-            sb.Append($"{tabs}\t{col.Name} {col.Definition}{comma}{comment}\n");
+            var line = $"{col.Name} {col.Definition}{comma}";
+            if (col.TrailingComment != null) line = AppendTrailing(line, col.TrailingComment);
+            sb.Append($"{tabs}\t{line}\n");
         }
         return sb.ToString();
     }
@@ -744,7 +766,7 @@ internal static class RuleHelpers
         var sb = new System.Text.StringBuilder();
         sb.Append("(");
         // A comment written on the '(' line stays there.
-        if (cg.OpenComment != null) sb.Append(TrailingCommentSuffix(cg.OpenComment));
+        if (cg.OpenComment != null) AppendTrailing(sb, cg.OpenComment);
         sb.Append("\n");
         for (int i = 0; i < cg.Conditions.Count; i++)
         {
@@ -754,8 +776,9 @@ internal static class RuleHelpers
                 foreach (var lc in cn.LeadingComments)
                     sb.Append($"{t1}{lc}\n");
                 string prefix = cn.LogicalOp != null ? $"{cn.LogicalOp} " : "";
-                string cmt    = cn.TrailingComment != null ? TrailingCommentSuffix(cn.TrailingComment) : "";
-                sb.Append($"{t1}{prefix}{EmitExpr(cn.Expression, engine, indent + 1)}{cmt}\n");
+                var line = $"{prefix}{EmitExpr(cn.Expression, engine, indent + 1)}";
+                if (cn.TrailingComment != null) line = AppendTrailing(line, cn.TrailingComment);
+                sb.Append($"{t1}{line}\n");
             }
         }
         sb.Append($"{t0})");

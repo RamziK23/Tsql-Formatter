@@ -816,7 +816,7 @@ public static class TestCases
         new TestCase {
             Rule = "blockcmt", Name = "nested /* /* */ */ comment is one comment",
             Input    = "select a /* outer /* inner */ still comment */ from t",
-            Expected = "select\n\ta/* outer /* inner */ still comment */\nfrom t",
+            Expected = "select\n\ta /* outer /* inner */ still comment */\nfrom t",
         },
 
         // ── UPDATE/DELETE WHERE: flat like SELECT, no outer parens added ──────
@@ -1206,6 +1206,11 @@ public static class TestCases
             Expected = "select\n\ta,/*n*/\n\tb\nfrom t",
         },
         new TestCase {
+            Rule = "blockcmt", Name = "block comment: glued after a comma, a space after anything else",
+            Input    = "update t /* про таблицу */\nset a = 1, /* про a */\nb = 2 /* про b */\nwhere x = 1",
+            Expected = "update t /* про таблицу */\nset\n\ta = 1,/* про a */\n\tb = 2 /* про b */\nwhere\n\tx = 1",
+        },
+        new TestCase {
             Rule = "blockcmt", Name = "standalone block comment keeps its line at the list's indent",
             Input    = "select\na,\n/*n*/\nb\nfrom t",
             Expected = "select\n\ta,\n\t/*n*/\n\tb\nfrom t",
@@ -1563,7 +1568,7 @@ public static class TestCases
         new TestCase {
             Rule = "cmt-safety", Name = "block comment on the delete line does not hide the from",
             Input    = "delete d  /* !!! */\nfrom webcar.dbo.t d\nwhere d.mm = @mm\n and d.yy = @yy",
-            Expected = "delete d/* !!! */\nfrom webcar.dbo.t as d\nwhere\n\td.mm = @mm\n\tand d.yy = @yy",
+            Expected = "delete d /* !!! */\nfrom webcar.dbo.t as d\nwhere\n\td.mm = @mm\n\tand d.yy = @yy",
         },
         new TestCase {
             Rule = "cmt-safety", Name = "line comment on the delete line does not hide the from",
@@ -1573,7 +1578,7 @@ public static class TestCases
         new TestCase {
             Rule = "cmt-safety", Name = "comment on the delete from line does not hide the where",
             Input    = "delete from t  /* zzz */\nwhere x = 1",
-            Expected = "delete from t/* zzz */\nwhere\n\tx = 1",
+            Expected = "delete from t /* zzz */\nwhere\n\tx = 1",
         },
         new TestCase {
             Rule = "cmt-safety", Name = "commented-out clauses inside a delete keep their lines",
@@ -1583,7 +1588,7 @@ public static class TestCases
         new TestCase {
             Rule = "cmt-safety", Name = "comment on the update line does not hide the set",
             Input    = "update t  /* zzz */\nset a = 1\nwhere x = 1",
-            Expected = "update t/* zzz */\nset\n\ta = 1\nwhere\n\tx = 1",
+            Expected = "update t /* zzz */\nset\n\ta = 1\nwhere\n\tx = 1",
         },
         new TestCase {
             Rule = "cmt-safety", Name = "commented-out clauses inside an update keep their lines",

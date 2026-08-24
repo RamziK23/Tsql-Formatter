@@ -58,10 +58,11 @@ public sealed class FragmentRule : IFormatterRule
             var colStr  = RuleHelpers.EmitExpr(col.Expression, engine, indent);
             var alias   = col.Alias != null ? $" as {col.Alias.Value}" : "";
             var comma   = i < c.Columns.Count - 1 ? "," : "";
-            var comment = col.TrailingComment != null ? RuleHelpers.TrailingCommentSuffix(col.TrailingComment) : "";
             var (lineLead, blockLead) = RuleHelpers.SplitLeadingComments(col.LeadingComments, tabs);
+            var body = $"{blockLead}{colStr}{alias}{comma}";
+            if (col.TrailingComment != null) body = RuleHelpers.AppendTrailing(body, col.TrailingComment);
             if (i > 0) sb.Append('\n');
-            sb.Append($"{lineLead}{tabs}{blockLead}{colStr}{alias}{comma}{comment}");
+            sb.Append($"{lineLead}{tabs}{body}");
         }
         return sb.ToString();
     }
