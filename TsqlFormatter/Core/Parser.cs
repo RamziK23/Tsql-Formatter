@@ -1928,11 +1928,14 @@ public sealed class Parser
             // ParsePrimary may have captured a same-line -- comment on the value itself.
             var lineComment = TakeLineCommentFrom(val);
 
-            // A /* */ block comment glued right after the value stays attached to it, inline.
+            // A /* */ block comment after the value stays attached to it, inline — glued when the
+            // author wrote it glued, a space out when he wrote a space.
+            bool spaced = _pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace;
             while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace) _pos++;
             while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.BlockComment)
             {
-                AttachGluedBlockComment(val, _tokens[_pos++].Value);
+                val = WithTrailingBlockComment(val, _tokens[_pos++].Value, spaced);
+                spaced = _pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace;
                 while (_pos < _tokens.Count && _tokens[_pos].Type == TokenType.Whitespace) _pos++;
             }
 
@@ -1988,7 +1991,7 @@ public sealed class Parser
 
     /// <summary>Glues any /* */ block comment(s) on the SAME line (whitespace-only before them,
     /// no newline) onto the given expression node — transparent, kept where they were.</summary>
-    private void GlueSameLineBlockComments(AstNode expr)
+    private AstNode GlueSameLineBlockComments(AstNode expr)
     {
         while (true)
         {
@@ -1996,11 +1999,24 @@ public sealed class Parser
             while (j < _tokens.Count && _tokens[j].Type == TokenType.Whitespace) j++;
             if (j < _tokens.Count && _tokens[j].Type == TokenType.BlockComment)
             {
-                AttachGluedBlockComment(expr, _tokens[j].Value);
+                expr = WithTrailingBlockComment(expr, _tokens[j].Value, spaced: j > _pos);
                 _pos = j + 1;
             }
             else break;
         }
+        return expr;
+    }
+
+    /// <summary>
+    /// Attaches a /* */ comment written after a value to that value: glued when the author wrote
+    /// no space in front of it, one space otherwise — the same rule the emitters apply everywhere
+    /// else. Returns the node to use in place of <paramref name="val"/>.
+    /// </summary>
+    private static AstNode WithTrailingBlockComment(AstNode val, string comment, bool spaced)
+    {
+        if (!spaced) { AttachGluedBlockComment(val, comment); return val; }
+        if (val is InlineCommentedNode ic && ic.After == null) { ic.After = " " + comment; return ic; }
+        return new InlineCommentedNode { Inner = val, After = " " + comment };
     }
 
     /// <summary>Appends a glued /* */ block comment to a value node that can carry a trailing comment.</summary>
@@ -2214,7 +2230,7 @@ public sealed class Parser
             if (Peek().IsKeyword("ASC") || Peek().IsKeyword("DESC")) Advance();
             // A /* */ block comment on the same line stays glued to the item (transparent),
             // instead of migrating to its own line as a standalone comment.
-            GlueSameLineBlockComments(expr);
+            expr = GlueSameLineBlockComments(expr);
             list.Add(WithLeadingComments(expr, leading));
             if (PeekIs(TokenType.Comma)) { Advance(); continue; } break;
         }

@@ -1130,14 +1130,14 @@ public static class TestCases
             Expected = "select\n\ta\nfrom t\nwhere\n\tx in (/*11,*/54, /*56,*/24, 26, 49)",
         },
         new TestCase {
-            Rule = "blockcmt", Name = "block comment after a value stays glued to it",
+            Rule = "blockcmt", Name = "block comment after a value keeps the space the author wrote",
             Input    = "select a from t where x in (1, 2 /*two*/, 3)",
-            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (1, 2/*two*/, 3)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (1, 2 /*two*/, 3)",
         },
         new TestCase {
             Rule = "blockcmt", Name = "block comment before the closing paren sticks to the last value",
             Input    = "select a from t where x in (1, 2 /*tail*/)",
-            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (1, 2/*tail*/)",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx in (1, 2 /*tail*/)",
         },
         new TestCase {
             Rule = "blockcmt", Name = "leading block comment survives a -- comment breaking the list",
@@ -1232,6 +1232,11 @@ public static class TestCases
             Rule = "blockcmt", Name = "comment after a comma in a broken IN list keeps its line",
             Input    = "select a from t\nwhere g in (\n1607,\t\t--first\n1608,\t\t/*second*/\n1609\t\t--third\n)",
             Expected = "select\n\ta\nfrom t\nwhere\n\tg in (\n\t\t1607,\t\t--first\n\t\t1608, /*second*/\n\t\t1609\t\t--third\n\t)",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "group by item: the space before the comment is kept, the glue too",
+            Input    = "select a from t group by a /*spaced*/, b/*glued*/",
+            Expected = "select\n\ta\nfrom t\ngroup by\n\ta /*spaced*/,\n\tb/*glued*/",
         },
         new TestCase {
             Rule = "blockcmt", Name = "comment with the next value behind it still leads that value",
