@@ -60,7 +60,7 @@ public static class TestCases
 
         // ── DROP TABLE trailing comment (bug 7) ──────────────────────────────
         new TestCase {
-            Rule = "droptable", Name = "trailing -- comment not glued into the table name",
+            Rule = "2.14", Name = "trailing -- comment not glued into the table name",
             Input    = "drop table if exists #aa_part\t\t--attempt to split\nselect 1 from t",
             Expected = "drop table if exists #aa_part\t\t--attempt to split\nselect\n\t1\nfrom t",
         },
@@ -454,7 +454,7 @@ public static class TestCases
             Expected = "select\n\tx.a\nfrom (\n\tselect\n\t\ta\n\tfrom t\n\twhere\n\t\tb = 1\n) as x",
         },
         new TestCase {
-            Rule = "simplecase", Name = "simple case (case x when)",
+            Rule = "2.5", Name = "simple case (case x when)",
             Input    = "select case status when 1 then 'a' when 2 then 'b' else 'c' end from t",
             Expected = "select\n\tcase status\n\t\twhen 1\n\t\tthen 'a'\n\t\twhen 2\n\t\tthen 'b'\n\t\telse 'c'\n\tend\nfrom t",
         },
@@ -471,12 +471,12 @@ public static class TestCases
             Expected = "declare @a int = 1,\t\t--note\n\t@b int = 2",
         },
         new TestCase {
-            Rule = "condgroup", Name = "parenthesized condition group with and/or",
+            Rule = "where-or", Name = "parenthesized condition group with and/or",
             Input    = "select a from t where x = 1 and (y = 2 or z = 3) or w = 4",
             Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\n\tand (\n\t\ty = 2\n\t\tor z = 3\n\t)\n\tor w = 4",
         },
         new TestCase {
-            Rule = "casewt", Name = "when and then on separate lines",
+            Rule = "2.5", Name = "when and then on separate lines",
             Input    = "select case when a > 1 then 'high' else 'low' end from t",
             Expected = "select\n\tcase\n\t\twhen a > 1\n\t\tthen 'high'\n\t\telse 'low'\n\tend\nfrom t",
         },
@@ -533,17 +533,17 @@ public static class TestCases
 
         // ── inline comments inside conditions ─────────────────────────────────
         new TestCase {
-            Rule = "inline-cmt", Name = "inline block comment between condition and and",
+            Rule = "blockcmt", Name = "inline block comment between condition and and",
             Input    = "select a from t where name = 'a and b' /* and here */ and z = 1",
             Expected = "select\n\ta\nfrom t\nwhere\n\tname = 'a and b' /* and here */\n\tand z = 1",
         },
         new TestCase {
-            Rule = "inline-cmt", Name = "inline comment on single where condition",
+            Rule = "blockcmt", Name = "inline comment on single where condition",
             Input    = "select a from t where x = 1 /* only */",
             Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1 /* only */",
         },
         new TestCase {
-            Rule = "inline-cmt", Name = "inline comment in join on",
+            Rule = "blockcmt", Name = "inline comment in join on",
             Input    = "select a from t1 s inner join t2 e on e.id = s.id /* join note */ and e.x = 1",
             Expected = "select\n\ta\nfrom t1 as s\n\tinner join t2 as e\n\t\ton e.id = s.id /* join note */\n\t\tand e.x = 1",
         },
@@ -587,17 +587,17 @@ public static class TestCases
             Expected = "--test\ndeclare @be int = 1",
         },
         new TestCase {
-            Rule = "declare", Name = "exponent literal not broken by number lexing",
+            Rule = "number", Name = "exponent literal not broken by number lexing",
             Input    = "select 1e-5 as x",
             Expected = "select\n\t1e-5 as x",
         },
         new TestCase {
-            Rule = "begincomment", Name = "comment attaches to declare inside begin/end",
+            Rule = "stmtcmt", Name = "comment attaches to declare inside begin/end",
             Input    = "begin\n\n--test\ndeclare @be int = 1--test2\n\ndeclare @b2e int = 1,\n@dt varchar(255) = ''\n\nend",
             Expected = "begin\n\n\t--test\n\tdeclare @be int = 1\t\t--test2\n\n\tdeclare @b2e int = 1,\n\t\t@dt varchar(255) = ''\n\nend",
         },
         new TestCase {
-            Rule = "declarecomment", Name = "leading comment + declare with glued trailing comment (top level)",
+            Rule = "stmtcmt", Name = "leading comment + declare with glued trailing comment (top level)",
             Input    = "--test\ndeclare @be int = 1--test2\n\ndeclare @b2e int = 1,\n@dt varchar(255) = ''",
             Expected = "--test\ndeclare @be int = 1\t\t--test2\n\ndeclare @b2e int = 1,\n\t@dt varchar(255) = ''",
         },
@@ -646,12 +646,12 @@ public static class TestCases
             Expected = "select\n\tname collate Latin1_General_Bin2 as x\nfrom t",
         },
         new TestCase {
-            Rule = "case-arith", Name = "case else with arithmetic after parens",
+            Rule = "2.5", Name = "case else with arithmetic after parens",
             Input    = "select case when @e = -1 then 2147483647 else ((@a - @b)/2) + 1 end as x from t",
             Expected = "select\n\tcase\n\t\twhen @e = -1\n\t\tthen 2147483647\n\t\telse ((@a - @b) / 2) + 1\n\tend as x\nfrom t",
         },
         new TestCase {
-            Rule = "case-arith", Name = "case then with arithmetic",
+            Rule = "2.5", Name = "case then with arithmetic",
             Input    = "select case when @a = 1 then @x + @y * 2 else 0 end as z from t",
             Expected = "select\n\tcase\n\t\twhen @a = 1\n\t\tthen @x + @y * 2\n\t\telse 0\n\tend as z\nfrom t",
         },
@@ -779,7 +779,7 @@ public static class TestCases
 
         // ── non-reserved keyword as bare alias ────────────────────────────────
         new TestCase {
-            Rule = "2.1", Name = "non-reserved keyword (day) as bare alias is kept as alias",
+            Rule = "alias", Name = "non-reserved keyword (day) as bare alias is kept as alias",
             Input    = "select getdate() day, 1 x from t",
             Expected = "select\n\tgetdate() as day,\n\t1 as x\nfrom t",
         },
@@ -890,12 +890,12 @@ public static class TestCases
             Expected = "if @i < 1\n\tand @b >= 1\nbegin\n\n\tprint('1')\n\nend\nelse\nbegin\n\n\tprint('0')\n\nend",
         },
         new TestCase {
-            Rule = "droptable", Name = "table name ends at the next statement",
+            Rule = "2.14", Name = "table name ends at the next statement",
             Input    = "drop table #t\nupdate t set a = 1 where id = 5",
             Expected = "drop table #t\nupdate t\nset\n\ta = 1\nwhere\n\tid = 5",
         },
         new TestCase {
-            Rule = "droptable", Name = "table name does not swallow the end of the enclosing block",
+            Rule = "2.14", Name = "table name does not swallow the end of the enclosing block",
             Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\nbegin\ndrop table #flag\nend",
             Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\nbegin\n\n\tdrop table #flag\n\nend",
         },
@@ -905,12 +905,12 @@ public static class TestCases
             Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\ndrop table #flag",
         },
         new TestCase {
-            Rule = "while", Name = "while is laid out like if: first condition on its line, body below",
+            Rule = "if", Name = "while is laid out like if: first condition on its line, body below",
             Input    = "while 1 < 2 and 20>5\nbegin\nselect\n1\nset @r += 1\nend",
             Expected = "while 1 < 2\n\tand 20 > 5\nbegin\n\n\tselect\n\t\t1\n\n\tset @r += 1\n\nend",
         },
         new TestCase {
-            Rule = "while", Name = "while with a bare body statement",
+            Rule = "if", Name = "while with a bare body statement",
             Input    = "while @i < 10\nset @i = @i + 1",
             Expected = "while @i < 10\nset @i = @i + 1",
         },
@@ -1197,6 +1197,33 @@ public static class TestCases
             Rule = "if", Name = "comment after a raw if body belongs to the next statement",
             Input    = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
             Expected = "if @i < 1\nprint('1')\n\n--next\nprint('2')",
+        },
+
+        // ── the indent/placement rules block C promises, pinned down ──────────
+        new TestCase {
+            Rule = "blockcmt", Name = "glued block comment gets no tab of its own",
+            Input    = "select a, /*n*/ b from t",
+            Expected = "select\n\ta,/*n*/\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "blockcmt", Name = "standalone block comment keeps its line at the list's indent",
+            Input    = "select\na,\n/*n*/\nb\nfrom t",
+            Expected = "select\n\ta,\n\t/*n*/\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "comment after the first column is that column's, not the select's",
+            Input    = "select a, --первая\nb --вторая\nfrom t",
+            Expected = "select\n\ta,\t\t--первая\n\tb\t\t--вторая\nfrom t",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "standalone comment inside the list is indented with the list",
+            Input    = "select a\n-- ,old_col\n,b\nfrom t",
+            Expected = "select\n\ta,\n\t-- ,old_col\n\tb\nfrom t",
+        },
+        new TestCase {
+            Rule = "linecmt", Name = "standalone comment after the list sits at the clause's indent",
+            Input    = "select d.group_id\n--  into #tmp\nfrom t as d",
+            Expected = "select\n\td.group_id\n--  into #tmp\nfrom t as d",
         },
 
         // ── blockcmt: commented-out code glued around an operand ──────────────
