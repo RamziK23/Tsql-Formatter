@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using TsqlFormatter.Core;
 using TsqlFormatter.Formatting;
@@ -25,8 +26,16 @@ public sealed class CreateTableRule : IFormatterRule
 
         if (node is DropTableNode drop)
         {
-            var ifExists = drop.IfExists ? " if exists" : "";
-            return $"{tabs}drop table{ifExists} {drop.TableName}";
+            // The statement is one line, so a comment written inside it keeps its place there —
+            // a -- comment as a /* */ one, since everything after it must stay code.
+            static string Cmts(System.Collections.Generic.List<string> cs) =>
+                string.Concat(cs.Select(c => RuleHelpers.AsInlineComment(c) + " "));
+            var line = new StringBuilder($"{tabs}drop ");
+            line.Append(Cmts(drop.KindComments)).Append("table ");
+            line.Append(Cmts(drop.ExistsComments));
+            if (drop.IfExists) line.Append("if exists ");
+            line.Append(Cmts(drop.NameComments)).Append(drop.TableName);
+            return line.ToString();
         }
 
         var ct = (CreateTableNode)node;

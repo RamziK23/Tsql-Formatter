@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~86 · Тестов: 301/301 · Движок: .NET 5
+- Правил: ~86 · Тестов: 308/308 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1863,6 +1863,34 @@ declare @tbl table (
 заканчивается на следующем операторе или на `end`/`else`, поэтому `drop table #t` в блоке
 `begin … end` больше не «съедает» закрывающий `end`, а `drop table #t` перед `update`/`exec`/`print`
 не склеивается с ним в одно имя.
+
+`drop` любого другого объекта — `function`, `procedure`, `view`, `index`, `trigger` — печатается
+как обычный оператор: ключевые слова в нижний регистр, имя без изменений. `if exists` в такой
+форме относится к самому `drop`, а не начинает новый `if`.
+
+```sql
+-- вход
+IF OBJECT_ID('dbo.GetBgbillingRawJson', 'FS') IS NOT NULL
+    DROP FUNCTION dbo.GetBgbillingRawJson
+GO
+-- результат
+if object_id('dbo.GetBgbillingRawJson', 'FS') is not null
+drop function dbo.GetBgbillingRawJson
+
+GO
+```
+
+Оператор `drop table` занимает одну строку, поэтому комментарий, написанный внутри него,
+остаётся на этой же строке — на своём месте (перед `table`, перед `if exists` или перед именем).
+Строчный `--` при этом переписывается в блочный: за ним обязан идти код (правило `cmt-safety`).
+
+```sql
+-- вход
+drop --note
+table #flag
+-- результат
+drop /*note*/ table #flag
+```
 
 ```sql
 -- вход

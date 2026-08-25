@@ -2468,12 +2468,26 @@ public sealed class Parser
 
     private AstNode ParseDrop()
     {
-        Advance(); // DROP
-        if (Peek().IsKeyword("TABLE"))
+        var dropToken = Advance(); // DROP
+        // A comment between DROP and TABLE must not hide the TABLE: read with Peek() alone it
+        // sent "drop /*x*/ table #t" down the raw path and split the statement over three lines.
+        var kindComments = new List<string>();
+        if (PeekClause("TABLE", kindComments))
         {
             Advance(); // TABLE
             bool ifExists = false;
-            if (Peek().IsKeyword("IF")) { Advance(); Expect(TokenType.Keyword, "EXISTS"); ifExists = true; }
+            // The same for a comment in front of IF EXISTS: hidden behind it, the IF read as a
+            // statement of its own and "exists #t" failed to parse as its condition.
+            var existsComments = new List<string>();
+            if (PeekClause("IF", existsComments))
+            {
+                Advance();
+                existsComments.AddRange(CollectStandaloneComments());
+                Expect(TokenType.Keyword, "EXISTS");
+                ifExists = true;
+            }
+            // Comments between TABLE / IF EXISTS and the name keep their place too.
+            var nameComments = CollectStandaloneComments();
             var nameTokens = new System.Text.StringBuilder();
             // The name ends at the next statement — every boundary keyword, not just a few:
             // "drop table #t \n update t set …" used to glue the whole next statement into the
@@ -2484,18 +2498,42 @@ public sealed class Parser
                    // is picked up as the statement's trailing comment instead of glued in.
                    && Peek().Type != TokenType.LineComment && Peek().Type != TokenType.BlockComment)
                 nameTokens.Append(Advance().Value);
-            return new DropTableNode { IfExists = ifExists, TableName = nameTokens.ToString().Trim() };
+            return new DropTableNode { IfExists = ifExists, TableName = nameTokens.ToString().Trim() }
+                .Tap(d => { d.KindComments.AddRange(kindComments);
+                            d.ExistsComments.AddRange(existsComments);
+                            d.NameComments.AddRange(nameComments); });
         }
-        return ParseRawStatement();
+        // Any other DROP (function, procedure, view, index, trigger …) goes through the raw
+        // emitter, which lowercases the keywords and leaves the name alone. The head of the
+        // statement is handed to it as tokens already read: left out, the raw statement began at
+        // "function", the word "drop" was lost, and the faithfulness gate handed the whole script
+        // back unformatted.
+        var seed = new List<Token> { dropToken };
+        // The kind of object being dropped ("function", "procedure", "index", …).
+        if (!IsAtEnd() && !IsStatementBoundary(Peek())
+            && Peek().Type is TokenType.Keyword or TokenType.Identifier)
+            seed.Add(Advance());
+        // "drop function if exists dbo.f": the IF belongs to the DROP. Left in the stream it
+        // started an IF statement and "exists dbo.f" failed to parse as its condition, which
+        // cost the whole script its formatting.
+        if (Peek().IsKeyword("IF"))
+        {
+            seed.Add(Advance());
+            if (Peek().IsKeyword("EXISTS")) seed.Add(Advance());
+        }
+        return ParseRawStatement(seed);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  Raw fallback
     // ═══════════════════════════════════════════════════════════════════════════
 
-    private RawTokensNode ParseRawStatement()
+    /// <param name="seed">Tokens already consumed that start this statement (the "drop function"
+    /// of a "drop function …", say); they become the raw statement's first tokens.</param>
+    private RawTokensNode ParseRawStatement(List<Token>? seed = null)
     {
         var raw = new RawTokensNode();
+        if (seed != null) raw.Tokens.AddRange(seed);
         int parenDepth = 0;
         int caseDepth  = 0;
         while (!IsAtEnd())

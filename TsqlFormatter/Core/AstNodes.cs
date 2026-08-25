@@ -637,6 +637,13 @@ public sealed class DropTableNode : AstNode
 {
     public bool IfExists { get; init; }
     public string TableName { get; init; } = "";
+    /// <summary>Comments written between DROP and TABLE ("drop /*x*/ table #t"); they stay
+    /// there, inline, since the statement is one line.</summary>
+    public List<string> KindComments { get; } = new();
+    /// <summary>Comments written between TABLE and IF EXISTS.</summary>
+    public List<string> ExistsComments { get; } = new();
+    /// <summary>Comments written between TABLE (or IF EXISTS) and the table name.</summary>
+    public List<string> NameComments { get; } = new();
 }
 
 // ─── IN value group (rule 2.3.2.3) ──────────────────────────────────────────

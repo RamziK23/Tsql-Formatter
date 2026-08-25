@@ -899,6 +899,43 @@ public static class TestCases
             Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\nbegin\ndrop table #flag\nend",
             Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\nbegin\n\n\tdrop table #flag\n\nend",
         },
+
+        // ── drop: objects other than tables, comments inside the statement ────
+        new TestCase {
+            Rule = "2.14", Name = "drop function keeps the drop keyword and lowercases it",
+            Input    = "IF OBJECT_ID('dbo.GetBgbillingRawJson', 'FS') IS NOT NULL\n    DROP FUNCTION dbo.GetBgbillingRawJson\nGO",
+            Expected = "if object_id('dbo.GetBgbillingRawJson', 'FS') is not null\ndrop function dbo.GetBgbillingRawJson\n\nGO",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "drop procedure / view / index formatted, not left raw",
+            Input    = "DROP PROCEDURE dbo.p\nDROP VIEW dbo.v\nDROP INDEX IX_a ON dbo.t",
+            Expected = "drop procedure dbo.p\ndrop view dbo.v\ndrop index IX_a on dbo.t",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "drop function if exists: the if belongs to the drop",
+            Input    = "DROP FUNCTION IF EXISTS dbo.f;",
+            Expected = "drop function if exists dbo.f;",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "comment between drop and table stays on the line",
+            Input    = "DROP /*note*/ TABLE #flag",
+            Expected = "drop /*note*/ table #flag",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "line comment inside a drop table becomes a block comment",
+            Input    = "drop --note\ntable #flag",
+            Expected = "drop /*note*/ table #flag",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "comment in front of if exists keeps the drop table one statement",
+            Input    = "DROP TABLE /*note*/ IF EXISTS #flag",
+            Expected = "drop table /*note*/ if exists #flag",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "comment before the table name stays before it",
+            Input    = "DROP TABLE IF EXISTS /*note*/ #flag",
+            Expected = "drop table if exists /*note*/ #flag",
+        },
         new TestCase {
             Rule = "if", Name = "bare body sits at the if's own indent",
             Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\ndrop table #flag",
