@@ -2381,6 +2381,21 @@ public sealed class Parser
     /// the column they annotate instead of being glued into the next column's definition, which
     /// left such a script unformatted.
     /// </summary>
+    /// <summary>
+    /// True when nothing but the separating comma or the list's closing paren stands behind the
+    /// comment(s) at the current position: the comment then belongs AFTER the column definition,
+    /// not inside it. Inside a nested paren ("decimal(18, /*x*/ 2)") it is never the end.
+    /// </summary>
+    private bool ColumnDefEndsAfterComments(int depth)
+    {
+        if (depth != 0) return false;
+        int j = _pos;
+        while (j < _tokens.Count && (Skippable.Contains(_tokens[j].Type)
+               || _tokens[j].Type is TokenType.LineComment or TokenType.BlockComment)) j++;
+        return j >= _tokens.Count
+            || _tokens[j].Type is TokenType.Comma or TokenType.RightParen or TokenType.EndOfFile;
+    }
+
     private void ParseColumnDefs(List<ColumnDefNode> columns, List<string>? closeComments = null)
     {
         while (!IsAtEnd())
@@ -2424,9 +2439,13 @@ public sealed class Parser
                 { sawSpace = true; sawNewline |= raw.Type == TokenType.Newline; _pos++; continue; }
 
                 if (raw.Type == TokenType.Comma && depth == 0) break; // column separator
-                // A comment is never part of the definition: it annotates the column and is
-                // taken below, so the comma can be emitted in front of it.
-                if (raw.Type is TokenType.LineComment or TokenType.BlockComment) break;
+                // A comment with nothing but the comma / the closing paren behind it TRAILS the
+                // column: it is taken below, so the comma can be emitted in front of it. One
+                // written INSIDE the definition ("id int /*x*/ not null") stays inside it —
+                // ending the definition there split the column in two and invented a comma
+                // between the halves, which changed what the script means.
+                bool isComment = raw.Type is TokenType.LineComment or TokenType.BlockComment;
+                if (isComment && ColumnDefEndsAfterComments(depth)) break;
                 if (raw.Type == TokenType.RightParen && depth == 0) break; // outer ) of the list
 
                 // Separator: none before ',' or ')' and none right after '(', a space before '('
@@ -2436,6 +2455,8 @@ public sealed class Parser
                 bool noSpace = first
                     || raw.Type is TokenType.Comma or TokenType.RightParen
                     || last == '('
+                    // A dotted name is one word: "references dbo.Accounts(id)", never "dbo . Accounts".
+                    || raw.Type == TokenType.Dot || last == '.'
                     || (raw.Type == TokenType.LeftParen && !sawSpace);
                 if (!noSpace) defTokens.Append(' ');
                 sawSpace = false;
@@ -2443,7 +2464,10 @@ public sealed class Parser
                 if (raw.Type == TokenType.LeftParen)  depth++;
                 if (raw.Type == TokenType.RightParen) depth--;
                 // Type/constraint keywords (int, varchar, not, null, default ...) lowercased.
-                defTokens.Append(raw.Type == TokenType.Keyword ? raw.Value.ToLowerInvariant() : raw.Value);
+                // A comment inside the definition renders as a /* */ one: code follows it on the
+                // same line, and a -- comment would swallow the rest of the column.
+                defTokens.Append(isComment ? CommentText.AsInline(raw.Value)
+                                 : raw.Type == TokenType.Keyword ? raw.Value.ToLowerInvariant() : raw.Value);
                 sawNewline = false;
                 _pos++;
             }
@@ -2451,9 +2475,13 @@ public sealed class Parser
             // The comment can stand on either side of the separating comma — but only on the
             // column's own line.
             var comment = sawNewline ? null : TryTakeSameLineInlineComment();
-            // Consume depth-0 comma separator between columns; a comment may follow it.
-            if (!IsAtEnd() && _tokens[_pos].Type == TokenType.Comma)
-            { _pos++; comment ??= TryTakeSameLineInlineComment(); }
+            // Consume depth-0 comma separator between columns; a comment may follow it. The
+            // comma can stand on the line BELOW the comment ("id int --note⏎, b int"); left
+            // unconsumed there it opened the next column with a stray "," of its own.
+            int afterDef = _pos;
+            while (afterDef < _tokens.Count && Skippable.Contains(_tokens[afterDef].Type)) afterDef++;
+            if (afterDef < _tokens.Count && _tokens[afterDef].Type == TokenType.Comma)
+            { _pos = afterDef + 1; comment ??= TryTakeSameLineInlineComment(); }
 
             columns.Add(new ColumnDefNode
             {

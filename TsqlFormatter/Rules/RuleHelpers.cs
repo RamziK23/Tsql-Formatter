@@ -32,8 +32,10 @@ internal static class RuleHelpers
                 bool noSpaceBefore =
                     t.Type == TokenType.LeftParen  ||
                     t.Type == TokenType.RightParen ||
-                    t.Type == TokenType.Comma;
-                bool prevOpensGroup = prev.Type == TokenType.LeftParen;
+                    t.Type == TokenType.Comma      ||
+                    // A dotted name is one word: "references dbo.Accounts(id)", not "dbo . Accounts".
+                    t.Type == TokenType.Dot;
+                bool prevOpensGroup = prev.Type == TokenType.LeftParen || prev.Type == TokenType.Dot;
                 bool prevIsComma    = prev.Type == TokenType.Comma;
                 // "declare @t table (id int)": TABLE is a keyword, not a function —
                 // keep the conventional space before its column-list paren.

@@ -937,6 +937,41 @@ public static class TestCases
             Expected = "drop table if exists /*note*/ #flag",
         },
         new TestCase {
+            Rule = "1.1", Name = "assembly is a keyword: drop assembly lowercased",
+            Input    = "drop ASSEMBLY bgbilling_synchronization;",
+            Expected = "drop assembly bgbilling_synchronization;",
+        },
+        new TestCase {
+            Rule = "1.1", Name = "references is a keyword inside a table constraint",
+            Input    = "create table Products (\naccountId int not null,\nconstraint FK_Products_Accounts foreign key (accountId) REFERENCES Accounts(accountId)\n);",
+            Expected = "create table Products (\n\taccountId int not null,\n\tconstraint FK_Products_Accounts foreign key (accountId) references Accounts(accountId)\n);",
+        },
+        new TestCase {
+            Rule = "1.1", Name = "assembly stays usable as an identifier",
+            Input    = "select assembly, t.assembly as a from dbo.assembly as t",
+            Expected = "select\n\tassembly,\n\tt.assembly as a\nfrom dbo.assembly as t",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "dotted name in a column definition is one word",
+            Input    = "create table t (id int references dbo.p(id))",
+            Expected = "create table t (\n\tid int references dbo.p(id)\n)",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "comment inside a column definition stays inside it",
+            Input    = "create table t (id int /*x*/ not null, b int)",
+            Expected = "create table t (\n\tid int /*x*/ not null,\n\tb int\n)",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "line comment inside a column definition becomes a block comment",
+            Input    = "create table t (id int --x\nnot null, b int)",
+            Expected = "create table t (\n\tid int /*x*/ not null,\n\tb int\n)",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "comma on the line below a column comment is not doubled",
+            Input    = "create table t (id int --note\n, b int)",
+            Expected = "create table t (\n\tid int,\t\t--note\n\tb int\n)",
+        },
+        new TestCase {
             Rule = "if", Name = "bare body sits at the if's own indent",
             Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\ndrop table #flag",
             Expected = "if object_id('tempdb..#flag') is not null\n\tand @t < 2\ndrop table #flag",

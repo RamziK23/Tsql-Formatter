@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~86 · Тестов: 308/308 · Движок: .NET 5
+- Правил: ~86 · Тестов: 315/315 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -43,6 +43,21 @@ select
 from dbo.Users
 where
 	Status = 1
+```
+
+Список служебных слов — в `Lexer.SqlKeywords`. Слово, которого там нет, форматтер считает
+идентификатором и регистр ему не меняет: именно так `ASSEMBLY` и `REFERENCES` оставались
+в верхнем регистре, пока не были добавлены в список. Обратное тоже верно: слово из списка
+по-прежнему годится в качестве имени или псевдонима (`select assembly from dbo.assembly as t`) —
+служебными считаются только те позиции, где по грамматике стоит ключевое слово.
+
+```sql
+-- вход
+drop ASSEMBLY bgbilling_synchronization;
+constraint FK_Products foreign key (accountId) REFERENCES Accounts(accountId)
+-- результат
+drop assembly bgbilling_synchronization;
+constraint FK_Products foreign key (accountId) references Accounts(accountId)
 ```
 
 ### `nstring` — Строковые литералы сохраняются дословно
@@ -1863,6 +1878,30 @@ declare @tbl table (
 заканчивается на следующем операторе или на `end`/`else`, поэтому `drop table #t` в блоке
 `begin … end` больше не «съедает» закрывающий `end`, а `drop table #t` перед `update`/`exec`/`print`
 не склеивается с ним в одно имя.
+
+Внутри определения колонки имя с схемой пишется слитно (`references dbo.Accounts(id)`),
+а комментарий остаётся там, где написан:
+
+- если за комментарием в определении ещё идёт код — он остаётся внутри определения
+  (`id int /*x*/ not null`), а строчный `--` переписывается в блочный: за ним обязан идти код;
+- если за ним стоит только запятая или закрывающая скобка — это хвостовой комментарий колонки,
+  он уходит за запятую (`id int,⇥⇥--note`).
+
+Раньше комментарий в середине определения обрывал колонку и между половинками появлялась
+лишняя запятая — скрипт менял смысл.
+
+```sql
+-- вход
+create table t (
+	id int --note
+	, b int
+)
+-- результат
+create table t (
+	id int,		--note
+	b int
+)
+```
 
 `drop` любого другого объекта — `function`, `procedure`, `view`, `index`, `trigger` — печатается
 как обычный оператор: ключевые слова в нижний регистр, имя без изменений. `if exists` в такой
