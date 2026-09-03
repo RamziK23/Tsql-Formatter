@@ -971,6 +971,23 @@ public static class TestCases
             Input    = "create table t (id int --note\n, b int)",
             Expected = "create table t (\n\tid int,\t\t--note\n\tb int\n)",
         },
+
+        // ── 5.1: a bare alias in single quotes ────────────────────────────────
+        new TestCase {
+            Rule = "5.1", Name = "single-quoted bare alias gets as, statement keeps parsing",
+            Input    = "select \np.eid 'суб ктв',\np.process_id\nfrom #last_proc as p",
+            Expected = "select\n\tp.eid as 'суб ктв',\n\tp.process_id\nfrom #last_proc as p",
+        },
+        new TestCase {
+            Rule = "5.1", Name = "single-quoted alias on a literal column",
+            Input    = "select 'a' 'b' from t",
+            Expected = "select\n\t'a' as 'b'\nfrom t",
+        },
+        new TestCase {
+            Rule = "5.1", Name = "a lone string literal column is not an alias",
+            Input    = "select a, 'b' from t",
+            Expected = "select\n\ta,\n\t'b'\nfrom t",
+        },
         new TestCase {
             Rule = "if", Name = "bare body sits at the if's own indent",
             Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\ndrop table #flag",

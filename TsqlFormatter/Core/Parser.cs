@@ -1293,7 +1293,11 @@ public sealed class Parser
                     postAliasComment = TryTakeInlineBlockComment();
                     alias = Advance();
                 }
+                // A bare alias can also be written in single quotes ("p.eid 'суб ктв'"), the old
+                // T-SQL spelling of "[суб ктв]". Not accepted here, the column list ended at the
+                // expression and everything after it fell out of the statement as raw text.
                 else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier
+                                     or TokenType.StringLiteral
                          && !IsClauseKeyword(Peek()) && !IsGoKeyword())
                 { preAliasComment = pending; alias = Advance(); }
                 // Non-reserved words lex as Keyword but are legal bare aliases (day, year,
