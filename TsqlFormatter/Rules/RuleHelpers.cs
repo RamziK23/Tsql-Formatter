@@ -797,6 +797,9 @@ internal static class RuleHelpers
                 sb.Append($"{t1}{line}\n");
             }
         }
+        // A commented-out condition at the end of the group keeps its line above the ')'.
+        foreach (var cc in cg.CloseComments)
+            sb.Append($"{t1}{cc}\n");
         sb.Append($"{t0})");
         return sb.ToString();
     }

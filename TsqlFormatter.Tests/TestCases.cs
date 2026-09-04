@@ -988,6 +988,23 @@ public static class TestCases
             Input    = "select a, 'b' from t",
             Expected = "select\n\ta,\n\t'b'\nfrom t",
         },
+
+        // ── a commented-out condition inside a ( … ) group ────────────────────
+        new TestCase {
+            Rule = "cmt-safety", Name = "commented-out condition between two operators in a not() group",
+            Input    = "select *\nfrom #res as w\nwhere not (\nw.is_first_paid = 0\nand w.days_count = 0.0\n--and w.months_count = 0.0\nand w.is_report_month_free = 0\n)",
+            Expected = "select\n\t*\nfrom #res as w\nwhere\n\tnot (\n\t\tw.is_first_paid = 0\n\t\tand w.days_count = 0.0\n\t\t--and w.months_count = 0.0\n\t\tand w.is_report_month_free = 0\n\t)",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "commented-out condition at the end of a group keeps its line",
+            Input    = "select * from t where (\na = 1\nand b = 2\n--and c = 3\n)",
+            Expected = "select\n\t*\nfrom t\nwhere\n\t(\n\t\ta = 1\n\t\tand b = 2\n\t\t--and c = 3\n\t)",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "a single condition plus a comment gets the group layout",
+            Input    = "select * from t where (\na = 1\n--only one\n)",
+            Expected = "select\n\t*\nfrom t\nwhere\n\t(\n\t\ta = 1\n\t\t--only one\n\t)",
+        },
         new TestCase {
             Rule = "if", Name = "bare body sits at the if's own indent",
             Input    = "if object_id('tempdb..#flag') is not null\nand @t < 2\ndrop table #flag",

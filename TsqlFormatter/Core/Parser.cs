@@ -1731,16 +1731,32 @@ public sealed class Parser
             // A boolean operator makes this a condition group: ( a = 1 or b = 2 ). Comments do
             // too — the group's layout is the only one that can give them their own line.
             if (Peek().IsKeyword("AND") || Peek().IsKeyword("OR")
-                || openComment != null || leading.Count > 0 || innerComment != null)
+                || openComment != null || leading.Count > 0 || innerComment != null
+                // A comment standing on its own line inside the parens needs the group layout
+                // too — that is the only one that can give it a line of its own.
+                || PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
             {
                 var group = new ConditionGroupNode { OpenComment = openComment };
                 group.Conditions.Add(new ConditionNode { Expression = inner, TrailingComment = innerComment }
                     .Tap(c => c.LeadingComments.AddRange(leading)));
-                while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+                while (true)
                 {
+                    // A commented-out condition stands between the operator lines
+                    // ("--and w.months_count = 0.0"). Read past it: stopping there ended the
+                    // group at the comment and the "and" behind it aborted the whole parse.
+                    var pending = new List<string>();
+                    while (PeekIs(TokenType.LineComment) || PeekIs(TokenType.BlockComment))
+                        pending.Add(Advance().Value);
+                    if (!Peek().IsKeyword("AND") && !Peek().IsKeyword("OR"))
+                    {
+                        // No condition behind them: the comments close the group, above the ')'.
+                        group.CloseComments.AddRange(pending);
+                        break;
+                    }
                     string op = Peek().IsKeyword("AND") ? "and" : "or";
                     Advance();
-                    var nextLeading = CollectStandaloneComments();
+                    var nextLeading = pending;
+                    nextLeading.AddRange(CollectStandaloneComments());
                     var next = ParseExpression();
                     var nextComment = TryTakeSameLineInlineComment();
                     group.Conditions.Add(new ConditionNode { LogicalOp = op, Expression = next, TrailingComment = nextComment }
