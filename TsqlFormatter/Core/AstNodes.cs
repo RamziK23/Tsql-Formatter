@@ -231,12 +231,16 @@ public sealed class MergeWhenNode : AstNode
 {
     /// <summary>"matched", "not matched by target" or "not matched by source".</summary>
     public string Kind { get; init; } = "matched";
-    /// <summary>Extra conditions after AND; the first stays on the when line.</summary>
+    /// <summary>Extra conditions after AND; each takes a line of its own, one tab in.</summary>
     public List<AstNode> ExtraConditions { get; } = new();
-    /// <summary>Comment written between the conditions and THEN.</summary>
-    public string? ConditionComment { get; set; }
-    /// <summary>Comment written on the THEN line.</summary>
+    /// <summary>Comment written on the "when …" line itself, after the kind.</summary>
+    public string? KindComment { get; set; }
+    /// <summary>Comment written on the THEN line; it closes that line, after the action.</summary>
     public string? ThenComment { get; set; }
+    /// <summary>Standalone comments written above the "when" line.</summary>
+    public List<string> LeadingComments { get; } = new();
+    /// <summary>Standalone comments written between the conditions and THEN, each on its own line.</summary>
+    public List<string> ThenLeadingComments { get; } = new();
     /// <summary>"update" (with <see cref="Assignments"/>), "insert" or "delete".</summary>
     public string Action { get; set; } = "delete";
     public List<AssignmentNode> Assignments { get; } = new();
@@ -311,6 +315,9 @@ public sealed class TableRefNode : AstNode
     /// <summary>Comment written between the clause keyword (from / join) and the table name;
     /// it stays there, in front of the name.</summary>
     public string? LeadingComment { get; set; }
+    /// <summary>Column aliases written after the alias — "as source (id, uuid)", the column
+    /// list of a derived table. Empty when the author wrote none.</summary>
+    public List<Token> ColumnAliases { get; } = new();
     /// <summary>Subquery used as a table source: (SELECT ...) AS alias</summary>
     public SubQueryNode? SubQuery { get; init; }
     /// <summary>Arguments for function-valued table sources: func(arg1, arg2) AS alias</summary>

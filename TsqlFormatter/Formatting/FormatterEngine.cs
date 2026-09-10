@@ -66,6 +66,33 @@ public sealed class FormatterEngine
     }
 
     /// <summary>
+    /// Appends the statement's ';' to its last line — before a -- comment that closes that line,
+    /// never after it. Behind the comment the ';' would be commented out: the statement would
+    /// lose its terminator, and the output-verification gate would throw the formatting away.
+    /// </summary>
+    private static string AppendSemicolon(string formatted)
+    {
+        int nl = formatted.LastIndexOf('\n');
+        var head = nl >= 0 ? formatted.Substring(0, nl + 1) : "";
+        var lastLine = nl >= 0 ? formatted.Substring(nl + 1) : formatted;
+
+        var last = new Lexer(lastLine).Tokenize()
+            .LastOrDefault(t => t.Type is not (TokenType.EndOfFile or TokenType.Whitespace or TokenType.Newline));
+        if (last != null && last.Type == TokenType.LineComment)
+        {
+            int idx = lastLine.LastIndexOf(last.Value, System.StringComparison.Ordinal);
+            if (idx > 0)
+            {
+                var code = lastLine.Substring(0, idx);
+                var trimmed = code.TrimEnd();
+                var sep = code.Substring(trimmed.Length);
+                return head + trimmed + ";" + sep + lastLine.Substring(idx);
+            }
+        }
+        return formatted + ";";
+    }
+
+    /// <summary>
     /// Ends the result the way the source ended. A selection that did not finish with a line break
     /// must not gain one — pasted back over the selection it would show up as an added empty line.
     /// </summary>
@@ -271,7 +298,7 @@ public sealed class FormatterEngine
 
             // The ';' the author wrote at the end of the statement goes back where it was:
             // glued to the last token, before any trailing comment.
-            if (stmt.TrailingSemicolon) formatted += ";";
+            if (stmt.TrailingSemicolon) formatted = AppendSemicolon(formatted);
 
             // A same-line trailing -- comment sticks to the statement's last line.
             if (stmt.StatementTrailingComment != null)

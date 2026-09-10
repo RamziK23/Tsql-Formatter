@@ -581,7 +581,10 @@ internal static class RuleHelpers
 
     // ─── Table ref emitter ──────────────────────────────────────────────────
 
-    public static string EmitTableRef(TableRefNode t, FormatterEngine engine, int indent = 0)
+    /// <param name="withColumnAliases">Emit a derived table's column list inline — "as t (a, b)".
+    /// MERGE's USING passes false: there the list is laid out one name per line.</param>
+    public static string EmitTableRef(TableRefNode t, FormatterEngine engine, int indent = 0,
+                                      bool withColumnAliases = true)
     {
         string nameStr;
         if (t.SubQuery != null)
@@ -623,6 +626,9 @@ internal static class RuleHelpers
             nameStr = string.Join("", t.Name.Select(p => p.Value));
         }
         var withAlias = t.Alias != null ? $"{nameStr} as {t.Alias.Value}" : nameStr;
+        // The column list a derived table declares after its alias stays on that line.
+        if (withColumnAliases && t.ColumnAliases.Count > 0)
+            withAlias += $" ({string.Join(", ", t.ColumnAliases.Select(c => c.Value))})";
         var withHint  = t.HintNolock != null ? $"{withAlias} with ({t.HintNolock})" : withAlias;
         // A comment written before the name keeps its place, in front of the table.
         if (t.LeadingComment != null) withHint = $"{t.LeadingComment} {withHint}";

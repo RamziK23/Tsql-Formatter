@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~86 · Тестов: 321/321 · Движок: .NET 5
+- Правил: ~86 · Тестов: 328/328 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1828,49 +1828,71 @@ WHERE в `update`/`delete` рендерится **так же плоско**, к
 скобки вокруг условий с `or` не добавляются (см. `where-or`).
 
 ### `merge` — MERGE … USING … ON … WHEN … THEN …
-Каждое ключевое слово начинает свою строку. Условия `on` — как у джойна: первое на строке `on`
-(+1 таб), остальные с `and`/`or` на своих строках (+2 таба). Каждая ветка `when …` — на своей
-строке, первое дополнительное условие после `and` остаётся на ней (как в `if`); `then` — на
-отдельной строке, действие ветки — на +1 таб. `output` и его `into` — каждый на своей строке.
-Необязательное `into` после `merge` сохраняется, если было написано. Комментарии остаются на
-своих местах. Раньше `merge` не разбирался вовсе, и скрипт с ним не форматировался.
+**Все ключевые слова оператора стоят на его собственном уровне** — `merge`, `using`, `when`,
+`then`, `set`, `values`, — и там же закрывающая скобка любого списка. Отступ (+1 таб) получают
+только содержимое списков и условия: `on` и все последующие `and`/`or` — как у джойна, на одном
+уровне; дополнительные условия ветки `when` — каждое своей строкой, тоже на +1.
+
+`then` делит строку с действием: `then update`, `then insert (`, `then insert default values`,
+`then delete`. Комментарий, написанный на этой строке, её и закрывает — после действия (или
+после открывающей скобки списка колонок).
+
+Список колонок производной таблицы у источника (`using ( … ) as source (id, uuid)`, `using
+dbo.Src as src (a, b)`) раскладывается по одной колонке на строку. Во `from` такой список
+остаётся на строке псевдонима: `from (select 1 as x) as t (a)`.
+
+Необязательное `into` после `merge` сохраняется, если было написано. `output` и его `into` —
+каждый на своей строке на нулевом уровне. Комментарии остаются на своих местах: над веткой,
+на строке `when`, за условием, на строке `then`.
 
 ```sql
 -- вход
-MERGE dbo.OrderLine AS tgt -- приёмник
-USING dbo.Src AS src
-   ON tgt.order_id = src.order_id -- условие
-WHEN MATCHED AND tgt.qty <> src.qty /* если изменилось */ THEN
-    UPDATE SET tgt.qty = src.qty -- количество
-WHEN NOT MATCHED BY TARGET THEN -- нет в приёмнике
-    INSERT (order_id, qty)
-    VALUES (src.order_id, src.qty)
-WHEN NOT MATCHED BY SOURCE THEN
-    DELETE
-OUTPUT $action, inserted.id -- что произошло
-INTO #log;
+merge core_baseorganizationinfo as target
+using (select c.id, c.uuid from #core_baseorganizationinfo as c) as source (id, uuid)
+on target.id = source.id and target.idd = source.idd
+when matched and (isnull(target.uuid, '') <> isnull(source.uuid, '') or target.dt <> source.dt) then
+update set target.uuid = source.uuid
+when not matched -- если не хватает записи, просто вставляем
+then insert (id, uuid) values (source.id, source.uuid) -- вставка
+when not matched by source --  если лишняя запись
+then delete;
 -- результат
-merge dbo.OrderLine as tgt		-- приёмник
-using dbo.Src as src
-	on tgt.order_id = src.order_id		-- условие
-when matched and tgt.qty <> src.qty /* если изменилось */
-then
-	update set
-		tgt.qty = src.qty		-- количество
-when not matched by target
-then		-- нет в приёмнике
-	insert (
-		order_id,
-		qty
+merge core_baseorganizationinfo as target
+using (
+	select
+		c.id,
+		c.uuid
+	from #core_baseorganizationinfo as c
+) as source (
+	id,
+	uuid
+)
+	on target.id = source.id
+	and target.idd = source.idd
+when matched
+	and (
+		isnull(target.uuid, '') <> isnull(source.uuid, '')
+		or target.dt <> source.dt
 	)
-	values
-		(src.order_id, src.qty)
-when not matched by source
-then
-	delete
-output $action, inserted.id		-- что произошло
-into #log;
+then update
+set
+	target.uuid = source.uuid
+when not matched		-- если не хватает записи, просто вставляем
+then insert (
+	id,
+	uuid
+)
+values (
+	source.id,
+	source.uuid
+)		-- вставка
+when not matched by source		--  если лишняя запись
+then delete;
 ```
+
+Точка с запятой оператора печатается вплотную к последнему токену — **перед** строчным
+комментарием, закрывающим строку (`then delete;⇥⇥-- лишние`): за комментарием она была бы
+закомментирована, оператор остался бы без терминатора.
 
 Псевдоколонки `$action` / `$IDENTITY` / `$ROWGUID` — один токен (раньше `$action`
 превращалось в `$ action`).

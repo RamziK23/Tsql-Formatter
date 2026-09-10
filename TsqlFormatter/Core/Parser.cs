@@ -1075,10 +1075,22 @@ public sealed class Parser
         var node = new MergeNode { Target = target, HasInto = hasInto, TargetComment = targetComment,
                                    Source = source, SourceComment = sourceComment };
 
+        // A comment before ON must not hide it ("using dbo.s as src\n--note\non tgt.id = …"):
+        // read past it and hand it to the first condition, which renders it above the on line —
+        // where it then parses back to the same place.
+        var onLeading = new List<string>();
+        PeekClause("ON", onLeading);
         Expect(TokenType.Keyword, "ON");
         node.OnConditions.AddRange(ParseConditionList(isJoinOn: true));
+        if (onLeading.Count > 0 && node.OnConditions.Count > 0 && node.OnConditions[0] is ConditionNode firstOn)
+            firstOn.LeadingComments.InsertRange(0, onLeading);
+        else
+            _pendingComments.AddRange(onLeading);
 
-        while (Peek().IsKeyword("WHEN"))
+        // A comment above a branch belongs to that branch: read past it, the WHEN behind it was
+        // invisible and the rest of the statement fell out of the MERGE.
+        var whenLeading = new List<string>();
+        while (PeekClause("WHEN", whenLeading))
         {
             Advance();
             var kind = new System.Text.StringBuilder();
@@ -1089,44 +1101,78 @@ public sealed class Parser
             { Advance(); kind.Append(" by ").Append(Advance().Value.ToLowerInvariant()); }
 
             var when = new MergeWhenNode { Kind = kind.ToString() };
-            while (Peek().IsKeyword("AND") || Peek().IsKeyword("OR"))
+            when.LeadingComments.AddRange(whenLeading);
+            whenLeading.Clear();
+            // A comment on the "when …" line stays on it, even when the conditions move to lines
+            // of their own below.
+            when.KindComment = TryTakeSameLineInlineComment();
+            // Extra conditions, each on a line of its own. Comments between them lead the
+            // condition that follows.
+            while (true)
             {
+                var condLeading = new List<string>();
+                if (!PeekClause("AND", condLeading) && !PeekClause("OR", condLeading)) break;
                 string op = Peek().IsKeyword("AND") ? "and" : "or";
                 Advance();
-                when.ExtraConditions.Add(new ConditionNode { LogicalOp = op, Expression = ParseExpression() });
+                condLeading.AddRange(CollectStandaloneComments());
+                var expr = ParseExpression();
+                var condComment = TryTakeSameLineInlineComment();
+                when.ExtraConditions.Add(new ConditionNode { LogicalOp = op, Expression = expr,
+                                                            TrailingComment = condComment }
+                    .Tap(c => c.LeadingComments.AddRange(condLeading)));
             }
-            when.ConditionComment = TryTakeSameLineInlineComment();
+            // Comments standing between the conditions and THEN keep their own line(s) there.
+            PeekClause("THEN", when.ThenLeadingComments);
             Expect(TokenType.Keyword, "THEN");
             when.ThenComment = TryTakeSameLineInlineComment();
 
-            if (Peek().IsKeyword("UPDATE"))
+            // THEN shares its line with the action word, so a comment written anywhere on that
+            // line — after THEN, after the action word, after the '(' that opens the column
+            // list — renders in the same place and parses back into the same slot.
+            if (PeekPastComments().IsKeyword("UPDATE"))
             {
                 Advance();
+                when.ThenComment ??= TryTakeSameLineInlineComment();
+                _pendingComments.AddRange(CollectStandaloneComments());
                 Expect(TokenType.Keyword, "SET");
                 when.Action = "update";
                 when.Assignments.AddRange(ParseAssignmentList());
             }
-            else if (Peek().IsKeyword("INSERT"))
+            else if (PeekPastComments().IsKeyword("INSERT"))
             {
                 Advance();
                 when.Action = "insert";
+                when.ThenComment ??= TryTakeSameLineInlineComment();
+                _pendingComments.AddRange(CollectStandaloneComments());
                 if (PeekIs(TokenType.LeftParen))
                 {
                     Advance();
+                    when.ThenComment ??= TryTakeSameLineInlineComment();
                     while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
                     {
+                        _pendingComments.AddRange(CollectStandaloneComments());
+                        if (IsAtEnd() || PeekIs(TokenType.RightParen)) break;
                         when.InsertColumns.Add(ParseExpression());
+                        _pendingComments.AddRange(CollectStandaloneComments());
                         if (PeekIs(TokenType.Comma)) Advance(); else break;
                     }
                     Expect(TokenType.RightParen);
                 }
-                if (Peek().IsKeyword("DEFAULT")) { Advance(); Advance(); when.DefaultValues = true; }
+                _pendingComments.AddRange(CollectStandaloneComments());
+                if (Peek().IsKeyword("DEFAULT"))
+                {
+                    Advance(); Advance(); when.DefaultValues = true;
+                    // "then insert default values" ends its line, so a comment there is the
+                    // line's closing comment like any other.
+                    when.ThenComment ??= TryTakeSameLineInlineComment();
+                }
                 else if (Peek().IsKeyword("VALUES")) when.InsertValues = ParseValues();
             }
             else
             {
                 Expect(TokenType.Keyword, "DELETE");
                 when.Action = "delete";
+                when.ThenComment ??= TryTakeSameLineInlineComment();
             }
             node.Whens.Add(when);
         }
@@ -1361,9 +1407,12 @@ public sealed class Parser
             if (Peek().IsKeyword("AS")) { Advance(); sqAlias = Advance(); }
             else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier && !IsJoinKeyword() && !IsSelectClauseKeyword())
                 sqAlias = Advance();
+            var sqCols = ParseColumnAliasList(sqAlias);
             return new TableRefNode {
                 SubQuery = new SubQueryNode { Select = sub }.Tap(q => q.CloseComments.AddRange(closingComments)),
-                Alias = sqAlias, LeadingComment = leadComment }.Tap(n => n.Pivot = TryParsePivot());
+                Alias = sqAlias, LeadingComment = leadComment }
+                .Tap(n => n.ColumnAliases.AddRange(sqCols))
+                .Tap(n => n.Pivot = TryParsePivot());
         }
 
         var nameParts = new List<Token>();
@@ -1392,6 +1441,7 @@ public sealed class Parser
         else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier
                  && !IsJoinKeyword() && !IsSelectClauseKeyword() && !IsGoKeyword())
             alias = Advance();
+        var columnAliases = ParseColumnAliasList(alias);
 
         // Table hint: WITH (NOLOCK), WITH (INDEX(..)), etc. — capture raw hint text.
         string? hint = null;
@@ -1429,7 +1479,28 @@ public sealed class Parser
             && funcArgs != null;
         return new TableRefNode { Alias = alias, FuncArgs = funcArgs, IsOpenQuery = isOpenQuery,
                                  HintNolock = hint, LeadingComment = leadComment }
-            .Tap(n => { n.Name.AddRange(nameParts); n.Pivot = TryParsePivot(); });
+            .Tap(n => { n.Name.AddRange(nameParts); n.ColumnAliases.AddRange(columnAliases);
+                        n.Pivot = TryParsePivot(); });
+    }
+
+    /// <summary>
+    /// The column list a derived table may declare after its alias: "as source (id, uuid)".
+    /// Only ever follows an alias, which is what tells it apart from an INSERT target's column
+    /// list ("insert into t (a, b)") and from a function-valued source. Without it the '(' ended
+    /// the table reference and MERGE's USING stopped parsing at the list.
+    /// </summary>
+    private List<Token> ParseColumnAliasList(Token? alias)
+    {
+        var cols = new List<Token>();
+        if (alias == null || !PeekIs(TokenType.LeftParen)) return cols;
+        Advance(); // (
+        while (!IsAtEnd() && !PeekIs(TokenType.RightParen))
+        {
+            cols.Add(Advance());
+            if (PeekIs(TokenType.Comma)) Advance(); else break;
+        }
+        Expect(TokenType.RightParen);
+        return cols;
     }
 
     /// <summary>

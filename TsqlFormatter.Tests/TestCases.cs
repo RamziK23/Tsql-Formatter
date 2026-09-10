@@ -1619,17 +1619,53 @@ public static class TestCases
         new TestCase {
             Rule = "merge", Name = "merge with update / insert branches",
             Input    = "merge into dbo.t as tgt\nusing dbo.s as src on tgt.id = src.id and tgt.k = src.k\nwhen matched then update set tgt.v = src.v\nwhen not matched then insert (id, v) values (src.id, src.v);",
-            Expected = "merge into dbo.t as tgt\nusing dbo.s as src\n\ton tgt.id = src.id\n\t\tand tgt.k = src.k\nwhen matched\nthen\n\tupdate set\n\t\ttgt.v = src.v\nwhen not matched\nthen\n\tinsert (\n\t\tid,\n\t\tv\n\t)\n\tvalues\n\t\t(src.id, src.v);",
+            Expected = "merge into dbo.t as tgt\nusing dbo.s as src\n\ton tgt.id = src.id\n\tand tgt.k = src.k\nwhen matched\nthen update\nset\n\ttgt.v = src.v\nwhen not matched\nthen insert (\n\tid,\n\tv\n)\nvalues (\n\tsrc.id,\n\tsrc.v\n);",
         },
         new TestCase {
             Rule = "merge", Name = "merge with by target / by source and default values",
             Input    = "merge dbo.t tgt using dbo.s src\non tgt.id = src.id\nwhen not matched by target then insert default values\nwhen not matched by source then delete;",
-            Expected = "merge dbo.t as tgt\nusing dbo.s as src\n\ton tgt.id = src.id\nwhen not matched by target\nthen\n\tinsert default values\nwhen not matched by source\nthen\n\tdelete;",
+            Expected = "merge dbo.t as tgt\nusing dbo.s as src\n\ton tgt.id = src.id\nwhen not matched by target\nthen insert default values\nwhen not matched by source\nthen delete;",
         },
         new TestCase {
-            Rule = "merge", Name = "merge keeps its comments, condition on the when line, output/into on their own",
+            Rule = "merge", Name = "merge keeps its comments, output/into on their own lines",
             Input    = "MERGE dbo.OrderLine AS tgt -- приёмник\nUSING dbo.Src AS src\n   ON tgt.order_id = src.order_id -- условие\nWHEN MATCHED AND tgt.qty <> src.qty /* если изменилось */ THEN\n    UPDATE SET tgt.qty = src.qty -- количество\nOUTPUT $action, inserted.id -- что произошло\nINTO #log; -- временная",
-            Expected = "merge dbo.OrderLine as tgt\t\t-- приёмник\nusing dbo.Src as src\n\ton tgt.order_id = src.order_id\t\t-- условие\nwhen matched and tgt.qty <> src.qty /* если изменилось */\nthen\n\tupdate set\n\t\ttgt.qty = src.qty\t\t-- количество\noutput $action, inserted.id\t\t-- что произошло\ninto #log;\t\t-- временная",
+            Expected = "merge dbo.OrderLine as tgt\t\t-- приёмник\nusing dbo.Src as src\n\ton tgt.order_id = src.order_id\t\t-- условие\nwhen matched\n\tand tgt.qty <> src.qty /* если изменилось */\nthen update\nset\n\ttgt.qty = src.qty\t\t-- количество\noutput $action, inserted.id\t\t-- что произошло\ninto #log;\t\t-- временная",
+        },
+
+        new TestCase {
+            Rule = "merge", Name = "merge reference layout: source column list, conditions, then + action",
+            Input    = "merge core_baseorganizationinfo as target\nusing (select c.id, c.uuid from #core_baseorganizationinfo as c) as source (id, uuid)\non target.id = source.id and target.idd = source.idd\nwhen matched and (isnull(target.uuid, '') <> isnull(source.uuid, '') or isnull(target.date_created, '1900-01-01 00:00:00.000') <> isnull(source.date_created, '1900-01-01 00:00:00.000')) then\nupdate set target.uuid = source.uuid, target.date_created = source.date_created\nwhen not matched -- если не хватает записи, просто вставляем\nthen insert (id, uuid) values (source.id, source.uuid) -- вставка\nwhen not matched by source --  если лишняя запись\nthen delete;",
+            Expected = "merge core_baseorganizationinfo as target\nusing (\n\tselect\n\t\tc.id,\n\t\tc.uuid\n\tfrom #core_baseorganizationinfo as c\n) as source (\n\tid,\n\tuuid\n)\n\ton target.id = source.id\n\tand target.idd = source.idd\nwhen matched\n\tand (\n\t\tisnull(target.uuid, '') <> isnull(source.uuid, '')\n\t\tor isnull(target.date_created, '1900-01-01 00:00:00.000') <> isnull(source.date_created, '1900-01-01 00:00:00.000')\n\t)\nthen update\nset\n\ttarget.uuid = source.uuid,\n\ttarget.date_created = source.date_created\nwhen not matched\t\t-- если не хватает записи, просто вставляем\nthen insert (\n\tid,\n\tuuid\n)\nvalues (\n\tsource.id,\n\tsource.uuid\n)\t\t-- вставка\nwhen not matched by source\t\t--  если лишняя запись\nthen delete;",
+        },
+        new TestCase {
+            Rule = "merge", Name = "a simple branch condition also takes its own line",
+            Input    = "merge dbo.T as tgt using dbo.Src as src on tgt.id = src.id\nwhen matched and tgt.qty <> src.qty then update set tgt.qty = src.qty;",
+            Expected = "merge dbo.T as tgt\nusing dbo.Src as src\n\ton tgt.id = src.id\nwhen matched\n\tand tgt.qty <> src.qty\nthen update\nset\n\ttgt.qty = src.qty;",
+        },
+        new TestCase {
+            Rule = "merge", Name = "comment after then closes the then line, after the action",
+            Input    = "merge dbo.T as tgt using dbo.Src as src on tgt.id = src.id\nwhen matched then -- пояснение\nupdate set tgt.qty = src.qty\nwhen not matched by source then -- лишние\ndelete;",
+            Expected = "merge dbo.T as tgt\nusing dbo.Src as src\n\ton tgt.id = src.id\nwhen matched\nthen update\t\t-- пояснение\nset\n\ttgt.qty = src.qty\nwhen not matched by source\nthen delete;\t\t-- лишние",
+        },
+        new TestCase {
+            Rule = "merge", Name = "column list of a plain table source is laid out like any list",
+            Input    = "merge dbo.T as tgt using dbo.Src as src (a, b) on tgt.id = src.id\nwhen matched then delete;",
+            Expected = "merge dbo.T as tgt\nusing dbo.Src as src (\n\ta,\n\tb\n)\n\ton tgt.id = src.id\nwhen matched\nthen delete;",
+        },
+        new TestCase {
+            Rule = "merge", Name = "insert without a column list keeps values on its own line",
+            Input    = "merge dbo.T as tgt using dbo.Src as src on tgt.id = src.id\nwhen not matched then insert values (src.id, src.qty);",
+            Expected = "merge dbo.T as tgt\nusing dbo.Src as src\n\ton tgt.id = src.id\nwhen not matched\nthen insert\nvalues (\n\tsrc.id,\n\tsrc.qty\n);",
+        },
+        new TestCase {
+            Rule = "merge", Name = "comment above a branch keeps its own line",
+            Input    = "merge dbo.T as tgt using dbo.Src as src on tgt.id = src.id\n--лишние строки\nwhen not matched by source then delete;",
+            Expected = "merge dbo.T as tgt\nusing dbo.Src as src\n\ton tgt.id = src.id\n--лишние строки\nwhen not matched by source\nthen delete;",
+        },
+        new TestCase {
+            Rule = "fromlist", Name = "column list of a derived table stays on the alias line",
+            Input    = "select a from (select 1 as x) as t(a)",
+            Expected = "select\n\ta\nfrom (\n\tselect\n\t\t1 as x\n) as t (a)",
         },
 
         // ── pivot: PIVOT / UNPIVOT laid out as a block ────────────────────────

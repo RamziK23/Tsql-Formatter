@@ -7,20 +7,38 @@ namespace TsqlFormatter.Rules
 {
 
 /// <summary>
-/// Rule `merge`:
-///   merge &lt;target&gt;
-///   using &lt;source&gt;
-///       on &lt;first condition&gt;
-///       and &lt;next condition&gt;
-///   when matched and &lt;condition&gt;
-///   then
-///       update set
-///           col = val
-///   …
-///   output … into …
-/// The ON conditions sit one tab in, like a JOIN's; every WHEN starts its own line with its
-/// first extra condition beside it (as in IF); THEN takes its own line and the action follows
-/// one tab in.
+/// Rule `merge`. Every keyword of the statement stands at the statement's own indent — merge,
+/// using, when, then, set, values — and so does the closing paren of any list. Only list
+/// contents and the ON / branch conditions are indented, one tab:
+///
+///     merge core_baseorganizationinfo as target
+///     using (
+///         select
+///             c.id
+///         from #src as c
+///     ) as source (
+///         id
+///     )
+///         on target.id = source.id
+///         and target.idd = source.idd
+///     when matched
+///         and (
+///             …
+///         )
+///     then update
+///     set
+///         target.uuid = source.uuid
+///     when not matched		-- комментарий
+///     then insert (
+///         id
+///     )
+///     values (
+///         source.id
+///     )
+///     when not matched by source
+///     then delete;
+///
+/// THEN shares its line with the action word; a comment written on that line closes it.
 /// </summary>
 public sealed class MergeRule : IFormatterRule
 {
@@ -31,42 +49,57 @@ public sealed class MergeRule : IFormatterRule
         var m    = (MergeNode)node;
         var tabs = RuleHelpers.Tabs(indent);
         var t1   = RuleHelpers.Tabs(indent + 1);
-        var t2   = RuleHelpers.Tabs(indent + 2);
         var sb   = new StringBuilder();
 
         var into = m.HasInto ? "into " : "";
         sb.Append($"{tabs}merge {into}{RuleHelpers.EmitTableRef(m.Target, engine, indent)}");
         if (m.TargetComment != null) RuleHelpers.AppendTrailing(sb, m.TargetComment);
 
-        sb.Append($"\n{tabs}using {RuleHelpers.EmitTableRef(m.Source, engine, indent)}");
+        // "using <source>", with the derived table's column list — when the author wrote one —
+        // laid out like every other list: one name per line, the paren closing at the keyword's
+        // own indent.
+        sb.Append($"\n{tabs}using {RuleHelpers.EmitTableRef(m.Source, engine, indent, withColumnAliases: false)}");
+        AppendNameList(sb, m.Source.ColumnAliases.Select(c => c.Value).ToList(), tabs, t1);
         if (m.SourceComment != null) RuleHelpers.AppendTrailing(sb, m.SourceComment);
 
-        // ON: first condition on the "on" line, the rest one tab further — the JOIN layout.
+        // ON: the first condition on the "on" line, every further one under it at the same
+        // indent — the JOIN layout.
         for (int i = 0; i < m.OnConditions.Count; i++)
         {
             var c    = m.OnConditions[i] as ConditionNode;
-            var text = RuleHelpers.EmitExpr(c?.Expression ?? m.OnConditions[i], engine, indent + 2);
-            var cmt  = c?.TrailingComment != null ? $" {c.TrailingComment}" : "";
-            sb.Append(i == 0
-                ? $"\n{t1}on {text}{cmt}"
-                : $"\n{t2}{c?.LogicalOp ?? "and"} {text}{cmt}");
+            var text = RuleHelpers.EmitExpr(c?.Expression ?? m.OnConditions[i], engine, indent + 1);
+            foreach (var lc in c?.LeadingComments ?? new System.Collections.Generic.List<string>())
+                sb.Append($"\n{t1}{lc}");
+            var line = i == 0 ? $"{t1}on {text}" : $"{t1}{c?.LogicalOp ?? "and"} {text}";
+            if (c?.TrailingComment != null) line = RuleHelpers.AppendTrailing(line, c.TrailingComment);
+            sb.Append($"\n{line}");
         }
 
         foreach (var w in m.Whens)
         {
-            sb.Append($"\n{tabs}when {w.Kind}");
-            // Extra AND/OR conditions: the first stays on the when line, like IF.
-            for (int i = 0; i < w.ExtraConditions.Count; i++)
+            foreach (var lc in w.LeadingComments) sb.Append($"\n{tabs}{lc}");
+            var whenLine = $"{tabs}when {w.Kind}";
+            if (w.KindComment != null) whenLine = RuleHelpers.AppendTrailing(whenLine, w.KindComment);
+            sb.Append($"\n{whenLine}");
+            // Every extra condition takes a line of its own, one tab in — the same shape the ON
+            // list has, so a group in a branch reads like a group anywhere else.
+            foreach (var cond in w.ExtraConditions)
             {
-                var c    = w.ExtraConditions[i] as ConditionNode;
-                var text = RuleHelpers.EmitExpr(c?.Expression ?? w.ExtraConditions[i], engine, indent + 1);
-                var op   = c?.LogicalOp ?? "and";
-                sb.Append(i == 0 ? $" {op} {text}" : $"\n{t1}{op} {text}");
+                var c    = cond as ConditionNode;
+                var text = RuleHelpers.EmitExpr(c?.Expression ?? cond, engine, indent + 1);
+                foreach (var lc in c?.LeadingComments ?? new System.Collections.Generic.List<string>())
+                    sb.Append($"\n{t1}{lc}");
+                var line = $"{t1}{c?.LogicalOp ?? "and"} {text}";
+                if (c?.TrailingComment != null) line = RuleHelpers.AppendTrailing(line, c.TrailingComment);
+                sb.Append($"\n{line}");
             }
-            if (w.ConditionComment != null) sb.Append(RuleHelpers.LineClosingCommentSuffix(w.ConditionComment));
-            sb.Append($"\n{tabs}then");
-            if (w.ThenComment != null) RuleHelpers.AppendTrailing(sb, w.ThenComment);
-            sb.Append(EmitAction(w, engine, indent + 1));
+            foreach (var lc in w.ThenLeadingComments) sb.Append($"\n{tabs}{lc}");
+
+            // THEN and the action word share a line; a comment written there closes it.
+            var head = $"{tabs}then {ActionHead(w)}";
+            if (w.ThenComment != null) head = RuleHelpers.AppendTrailing(head, w.ThenComment);
+            sb.Append($"\n{head}");
+            AppendActionBody(sb, w, engine, indent);
         }
 
         if (m.OutputTokens != null)
@@ -83,60 +116,83 @@ public sealed class MergeRule : IFormatterRule
         return sb.ToString();
     }
 
-    private static string EmitAction(MergeWhenNode w, FormatterEngine engine, int indent)
+    /// <summary>What follows THEN on its line: the action word, plus the '(' that opens an
+    /// INSERT column list.</summary>
+    private static string ActionHead(MergeWhenNode w) => w.Action switch
+    {
+        "update" => "update",
+        "insert" => w.DefaultValues ? "insert default values"
+                    : w.InsertColumns.Count > 0 ? "insert (" : "insert",
+        _        => "delete",
+    };
+
+    private static void AppendActionBody(StringBuilder sb, MergeWhenNode w, FormatterEngine engine, int indent)
     {
         var tabs = RuleHelpers.Tabs(indent);
-        var sb   = new StringBuilder();
+        var t1   = RuleHelpers.Tabs(indent + 1);
+
         switch (w.Action)
         {
             case "update":
-                // "update set" opens the list; each assignment on its own line, the comma before
-                // its comment.
-                sb.Append($"\n{tabs}update set");
+                // "set" opens the list on a line of its own; each assignment one tab in, the
+                // comma before its comment.
+                sb.Append($"\n{tabs}set");
                 for (int i = 0; i < w.Assignments.Count; i++)
                 {
                     var a      = w.Assignments[i];
                     var target = RuleHelpers.EmitExpr(a.Target, engine, indent + 1);
                     var value  = RuleHelpers.EmitExpr(a.Value,  engine, indent + 1);
-                    sb.Append($"\n{RuleHelpers.Tabs(indent + 1)}{target} = {value}");
-                    if (i < w.Assignments.Count - 1) sb.Append(",");
-                    if (a.TrailingComment != null) RuleHelpers.AppendTrailing(sb, a.TrailingComment);
+                    var line   = $"{t1}{target} = {value}";
+                    if (i < w.Assignments.Count - 1) line += ",";
+                    if (a.TrailingComment != null) line = RuleHelpers.AppendTrailing(line, a.TrailingComment);
+                    sb.Append($"\n{line}");
                 }
                 break;
 
             case "insert":
-                sb.Append($"\n{tabs}insert");
+                // The '(' of the column list is already on the THEN line; the names follow one
+                // tab in and the paren closes at the statement's indent.
                 if (w.InsertColumns.Count > 0)
                 {
-                    sb.Append(" (\n");
                     for (int i = 0; i < w.InsertColumns.Count; i++)
                     {
-                        sb.Append($"{RuleHelpers.Tabs(indent + 1)}{RuleHelpers.EmitExpr(w.InsertColumns[i], engine, indent + 1)}");
-                        if (i < w.InsertColumns.Count - 1) sb.Append(",");
-                        sb.Append("\n");
+                        var comma = i < w.InsertColumns.Count - 1 ? "," : "";
+                        sb.Append($"\n{t1}{RuleHelpers.EmitExpr(w.InsertColumns[i], engine, indent + 1)}{comma}");
                     }
-                    sb.Append($"{tabs})");
+                    sb.Append($"\n{tabs})");
                 }
-                if (w.DefaultValues) sb.Append(" default values");
-                else if (w.InsertValues is ValuesNode vn)
+                if (w.InsertValues is ValuesNode vn)
                 {
-                    sb.Append($"\n{tabs}values");
                     for (int r = 0; r < vn.Rows.Count; r++)
                     {
-                        var vals = string.Join(", ", vn.Rows[r].Select(v => RuleHelpers.EmitExpr(v, engine, indent)));
-                        sb.Append($"\n{RuleHelpers.Tabs(indent + 1)}({vals})");
-                        if (r < vn.Rows.Count - 1) sb.Append(",");
+                        sb.Append($"\n{tabs}values (");
+                        for (int i = 0; i < vn.Rows[r].Count; i++)
+                        {
+                            var comma = i < vn.Rows[r].Count - 1 ? "," : "";
+                            sb.Append($"\n{t1}{RuleHelpers.EmitExpr(vn.Rows[r][i], engine, indent + 1)}{comma}");
+                        }
+                        var close = $"{tabs})";
+                        if (r < vn.Rows.Count - 1) close += ",";
                         if (r < vn.RowComments.Count && vn.RowComments[r] != null)
-                            RuleHelpers.AppendTrailing(sb, vn.RowComments[r]!);
+                            close = RuleHelpers.AppendTrailing(close, vn.RowComments[r]!);
+                        sb.Append($"\n{close}");
                     }
                 }
                 break;
-
-            default:
-                sb.Append($"\n{tabs}delete");
-                break;
         }
-        return sb.ToString();
+    }
+
+    /// <summary>Renders a parenthesised list of names opened on the line already in
+    /// <paramref name="sb"/>: one name per line, the closing paren back at that line's indent.
+    /// Does nothing when the list is empty.</summary>
+    private static void AppendNameList(StringBuilder sb, System.Collections.Generic.List<string> names,
+                                       string tabs, string t1)
+    {
+        if (names.Count == 0) return;
+        sb.Append(" (");
+        for (int i = 0; i < names.Count; i++)
+            sb.Append($"\n{t1}{names[i]}{(i < names.Count - 1 ? "," : "")}");
+        sb.Append($"\n{tabs})");
     }
 }
 
