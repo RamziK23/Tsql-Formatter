@@ -28,7 +28,7 @@ public sealed class RawTokensRule : IFormatterRule
         {
             if (t.Type is TokenType.LineComment or TokenType.BlockComment)
             {
-                if (inline.Count > 0) { parts.Add(RuleHelpers.EmitRawTokens(inline)); inline.Clear(); }
+                if (inline.Count > 0) { parts.Add(RuleHelpers.EmitRawTokens(inline, indent)); inline.Clear(); }
                 parts.Add(t.Value);
             }
             else
@@ -36,7 +36,7 @@ public sealed class RawTokensRule : IFormatterRule
                 inline.Add(t);
             }
         }
-        if (inline.Count > 0) parts.Add(RuleHelpers.EmitRawTokens(inline));
+        if (inline.Count > 0) parts.Add(RuleHelpers.EmitRawTokens(inline, indent));
 
         return string.Join("\n", parts.Select(p => $"{tabs}{p}"));
     }

@@ -99,7 +99,9 @@ internal static class RuleHelpers
     /// '('). Whitespace/newline tokens are ignored. Shared by raw statements (RawTokensRule)
     /// and window/OVER specs so both render "order by a.[Id]" rather than "ORDER BY a . [Id]".
     /// </summary>
-    public static string EmitRawTokens(IEnumerable<Token> tokens)
+    /// <param name="indent">Indent of the line the tokens are placed on; a multi-line string
+    /// literal among them is re-indented to it (rule `dynsql`).</param>
+    public static string EmitRawTokens(IEnumerable<Token> tokens, int indent = 0)
     {
         var toks = tokens
             .Where(t => t.Type is not (TokenType.Whitespace or TokenType.Newline))
@@ -113,6 +115,7 @@ internal static class RuleHelpers
             bool isFunction = t.Type == TokenType.Identifier
                 && i + 1 < toks.Count && toks[i + 1].Type == TokenType.LeftParen;
             string val = t.Type == TokenType.Keyword || isFunction ? t.Value.ToLowerInvariant() : t.Value;
+            if (t.Type == TokenType.StringLiteral) val = ReindentStringLiteral(val, indent);
 
             if (i > 0)
             {
@@ -132,13 +135,60 @@ internal static class RuleHelpers
 
     private static string EmitLiteral(LiteralNode l, int indent = 0)
     {
-        // String literals (including multi-line dynamic SQL) are emitted VERBATIM: reindenting
-        // their content would scramble hand-aligned dynamic SQL and shift -- comments inside the
-        // string. Only keyword literals are case-normalized.
+        // Only keyword literals are case-normalized; a string's content is the author's, except
+        // for the indentation of a multi-line one (rule `dynsql`).
         var text = l.Token.Type == TokenType.Keyword ? l.Token.Value.ToLowerInvariant() : l.Token.Value;
+        if (l.Token.Type == TokenType.StringLiteral) text = ReindentStringLiteral(text, indent);
         // A comment the author glued to a VALUE stays glued to it (rule `blockcmt`); the space
         // rule applies to comments that trail a clause, not a literal.
         return l.TrailingComment != null ? $"{text}{TrailingCommentSuffix(l.TrailingComment)}" : text;
+    }
+
+    /// <summary>
+    /// Re-indents a multi-line string literal — dynamic SQL, an OPENQUERY remote query — so its
+    /// lines line up under the line the literal starts on instead of hanging at whatever column
+    /// they had in the source. The lines keep their layout RELATIVE to each other: the common
+    /// leading whitespace of the continuation lines is replaced by <paramref name="indent"/>
+    /// tabs, so deeper-indented lines stay deeper. Applying it twice changes nothing, since the
+    /// common indent is then exactly what it puts there.
+    /// </summary>
+    public static string ReindentStringLiteral(string text, int indent)
+    {
+        if (text.IndexOf('\n') < 0) return text;
+        var lines = text.Split('\n');
+
+        // The common leading whitespace of every non-blank line after the first.
+        string? common = null;
+        for (int i = 1; i < lines.Length && common != ""; i++)
+        {
+            var core = Core(lines[i]);
+            if (core.Trim().Length == 0) continue;          // blank lines say nothing about it
+            var lead = core.Substring(0, core.Length - core.TrimStart(' ', '\t').Length);
+            common = common == null ? lead : CommonPrefix(common, lead);
+        }
+        if (common == null) return text;                     // nothing but blank lines below
+
+        var tabs = Tabs(indent);
+        var sb = new System.Text.StringBuilder(lines[0]);
+        for (int i = 1; i < lines.Length; i++)
+        {
+            sb.Append('\n');
+            var line = lines[i];
+            var cr   = line.EndsWith("\r") ? "\r" : "";
+            var core = Core(line);
+            // A blank line carries no text, so it carries no indentation either.
+            sb.Append(core.Trim().Length == 0 ? cr : tabs + core.Substring(common.Length) + cr);
+        }
+        return sb.ToString();
+
+        static string Core(string line) => line.EndsWith("\r") ? line.Substring(0, line.Length - 1) : line;
+    }
+
+    private static string CommonPrefix(string a, string b)
+    {
+        int n = 0;
+        while (n < a.Length && n < b.Length && a[n] == b[n]) n++;
+        return a.Substring(0, n);
     }
 
     /// <summary>

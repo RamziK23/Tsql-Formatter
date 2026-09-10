@@ -289,14 +289,35 @@ public static class TestCases
             Expected = "select\n\ta\nfrom t\ngroup by\n\ta,\n\tb/*, c*/",
         },
         new TestCase {
-            Rule = "2.13", Name = "concatenated dynamic sql fragments emitted verbatim",
+            Rule = "dynsql", Name = "concatenated dynamic sql fragments re-indented, layout kept",
             Input    = "declare @x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
-            Expected = "declare @x varchar(max) = '\n\tline1\n' + @p + '\n\tline2\n'",
+            Expected = "declare @x varchar(max) = '\n\t\tline1\n\t' + @p + '\n\t\tline2\n\t'",
         },
         new TestCase {
-            Rule = "2.13", Name = "multiline dynamic sql string emitted verbatim (no reindent)",
+            Rule = "dynsql", Name = "multiline dynamic sql string lines up under its own line",
             Input    = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from '+b.dbName+'.dbo.contract'+b.suffix+'\n' from webcar.dbo.billing as b",
-            Expected = "declare @s varchar(max) = ''\nselect @s = @s + '\n    select\n        id,\n        title\n    from ' + b.dbName + '.dbo.contract' + b.suffix + '\n'\nfrom webcar.dbo.billing as b",
+            Expected = "declare @s varchar(max) = ''\nselect @s = @s + '\n\tselect\n\t    id,\n\t    title\n\tfrom ' + b.dbName + '.dbo.contract' + b.suffix + '\n\t'\nfrom webcar.dbo.billing as b",
+        },
+
+        new TestCase {
+            Rule = "dynsql", Name = "openquery remote sql lines up under its own line",
+            Input    = "select\nw.*\nfrom openquery(\nsrv,\n'\nselect id\nfrom t\n'\n) as w",
+            Expected = "select\n\tw.*\nfrom openquery(\n\tsrv,\n\t'\n\tselect id\n\tfrom t\n\t'\n) as w",
+        },
+        new TestCase {
+            Rule = "dynsql", Name = "openquery inside a subquery takes the deeper indent",
+            Input    = "select\n*\nfrom (\nselect\nid\nfrom openquery(\nsrv,\n'select t.id\nfrom tb as s\ninner join a on t.id = a.id'\n) as w\n) as b",
+            Expected = "select\n\t*\nfrom (\n\tselect\n\t\tid\n\tfrom openquery(\n\t\tsrv,\n\t\t'select t.id\n\t\tfrom tb as s\n\t\tinner join a on t.id = a.id'\n\t) as w\n) as b",
+        },
+        new TestCase {
+            Rule = "dynsql", Name = "relative layout inside the literal is kept",
+            Input    = "select 'line\n\tdeeper\n\t\tdeepest' as x from t",
+            Expected = "select\n\t'line\n\tdeeper\n\t\tdeepest' as x\nfrom t",
+        },
+        new TestCase {
+            Rule = "dynsql", Name = "exec sp_executesql inside a block lines up too",
+            Input    = "begin\nexec sp_executesql N'select a\nfrom t'\nend",
+            Expected = "begin\n\n\texec sp_executesql N'select a\n\tfrom t'\n\nend",
         },
 
         // ── 2.4 subquery in IN ────────────────────────────────────────────────

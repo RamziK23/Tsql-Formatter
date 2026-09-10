@@ -203,7 +203,11 @@ public sealed class FormatterEngine
                 or TokenType.NumberLiteral or TokenType.StringLiteral
                 or TokenType.Keyword or TokenType.DeclareKeyword)
             {
-                var key = t.Value.ToLowerInvariant();
+                // A multi-line string literal is re-indented (rule `dynsql`), so its lines are
+                // compared without their leading whitespace — the text itself must still match.
+                var key = t.Type == TokenType.StringLiteral
+                    ? string.Join("\n", t.Value.Split('\n').Select(l => l.TrimStart(' ', '\t'))).ToLowerInvariant()
+                    : t.Value.ToLowerInvariant();
                 counts[key] = counts.TryGetValue(key, out int n) ? n + 1 : 1;
             }
         }
