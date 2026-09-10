@@ -93,11 +93,17 @@ public sealed class SelectRule : IFormatterRule
             // on its own line one tab in, and the comma closes the source before it — after its
             // joins, and before its trailing -- comment so the comma is never commented out.
             var sources = new List<(StringBuilder Body, string? Comment, bool Glued)>();
+            // The source written directly above the join being emitted — what rule `joingap`
+            // asks about.
+            TableRefNode? previous = null;
             foreach (var clause in sel.FromClauses)
             {
                 if (clause is TableRefNode tref)
+                {
                     sources.Add((new StringBuilder(RuleHelpers.EmitTableRef(tref, engine, indent)),
                                  tref.TrailingComment, tref.TrailingCommentGlued));
+                    previous = tref;
+                }
                 else if (clause is JoinNode join)
                 {
                     if (sources.Count == 0) sources.Add((new StringBuilder(), null, false));
@@ -110,7 +116,9 @@ public sealed class SelectRule : IFormatterRule
                         else RuleHelpers.AppendTrailing(body, comment);
                         sources[^1] = (body, null, false);
                     }
-                    body.Append(RuleHelpers.FormatJoin(join, engine, indent));
+                    body.Append(RuleHelpers.FormatJoin(join, engine, indent,
+                                                      !RuleHelpers.JoinLinksTo(join, previous)));
+                    previous = join.Table;
                 }
             }
 

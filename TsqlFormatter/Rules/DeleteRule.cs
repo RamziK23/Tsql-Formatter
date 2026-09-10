@@ -60,14 +60,20 @@ public sealed class DeleteRule : IFormatterRule
             foreach (var c in del.PreFromComments) sb.Append($"\n{tabs}{c}");
 
         // FROM / JOINs
+        TableRefNode? previous = null;
         foreach (var clause in del.FromClauses)
         {
             if (clause is JoinNode join)
-                sb.Append(RuleHelpers.FormatJoin(join, engine, indent));
+            {
+                sb.Append(RuleHelpers.FormatJoin(join, engine, indent,
+                                                 !RuleHelpers.JoinLinksTo(join, previous)));
+                previous = join.Table;
+            }
             else if (clause is TableRefNode tref)
             {
                 if (!fromWritten) { sb.Append($"\n{tabs}from"); fromWritten = true; }
                 sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
+                previous = tref;
             }
         }
 

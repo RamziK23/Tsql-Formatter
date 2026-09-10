@@ -51,12 +51,20 @@ public sealed class UpdateRule : IFormatterRule
         if (upd.FromClauses.Count > 0)
         {
             sb.Append($"\n{tabs}from");
+            TableRefNode? previous = null;
             foreach (var clause in upd.FromClauses)
             {
                 if (clause is JoinNode join)
-                    sb.Append(RuleHelpers.FormatJoin(join, engine, indent));
+                {
+                    sb.Append(RuleHelpers.FormatJoin(join, engine, indent,
+                                                     !RuleHelpers.JoinLinksTo(join, previous)));
+                    previous = join.Table;
+                }
                 else if (clause is TableRefNode tref)
+                {
                     sb.Append($" {RuleHelpers.EmitTableRef(tref, engine, indent)}");
+                    previous = tref;
+                }
             }
         }
 

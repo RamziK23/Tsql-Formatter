@@ -1834,6 +1834,68 @@ public static class TestCases
             Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
         },
 
+        // ── joingap: an empty line before a join that starts a new chain ──────
+        new TestCase {
+            Rule = "joingap", Name = "a chain of joins stays together",
+            Input    = "select * from A as a inner join B as b on b.id = a.id inner join C as c on c.id = b.id",
+            Expected = "select\n\t*\nfrom A as a\n\tinner join B as b\n\t\ton b.id = a.id\n\tinner join C as c\n\t\ton c.id = b.id",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "a join that hangs off an earlier source gets an empty line",
+            Input    = "select * from A as a inner join B as b on b.id = a.id inner join C as c on c.id = a.id",
+            Expected = "select\n\t*\nfrom A as a\n\tinner join B as b\n\t\ton b.id = a.id\n\n\tinner join C as c\n\t\ton c.id = a.id",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "an empty line between linked joins is removed",
+            Input    = "select * from A as a\ninner join B as b on b.id = a.id\n\ninner join C as c on c.id = b.id",
+            Expected = "select\n\t*\nfrom A as a\n\tinner join B as b\n\t\ton b.id = a.id\n\tinner join C as c\n\t\ton c.id = b.id",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "one and-ed reference to the source above is a link",
+            Input    = "select * from A as a inner join B as b on b.id = a.id inner join C as c on c.id = b.id and c.x = a.x",
+            Expected = "select\n\t*\nfrom A as a\n\tinner join B as b\n\t\ton b.id = a.id\n\tinner join C as c\n\t\ton c.id = b.id\n\t\tand c.x = a.x",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "the first join is judged against the from table too",
+            Input    = "select * from A as a inner join B as b on b.id = @p",
+            Expected = "select\n\t*\nfrom A as a\n\n\tinner join B as b\n\t\ton b.id = @p",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "cross join has no conditions, so it starts a new chain",
+            Input    = "select * from A as a cross join E as e",
+            Expected = "select\n\t*\nfrom A as a\n\n\tcross join E as e",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "apply is judged by the correlation inside it",
+            Input    = "select * from A as a cross apply dbo.f(a.id) as x cross apply dbo.g(1) as y",
+            Expected = "select\n\t*\nfrom A as a\n\tcross apply dbo.f(a.id) as x\n\n\tcross apply dbo.g(1) as y",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "unqualified column names carry no link",
+            Input    = "select * from A as a inner join F as f on f.id = id",
+            Expected = "select\n\t*\nfrom A as a\n\n\tinner join F as f\n\t\ton f.id = id",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "a source without an alias is named by its last name part",
+            Input    = "select * from webcar.dbo.city inner join dbo.d as d on d.cid = city.id",
+            Expected = "select\n\t*\nfrom webcar.dbo.city\n\tinner join dbo.d as d\n\t\ton d.cid = city.id",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "the empty line goes above the join's own comment",
+            Input    = "select * from A as a\n--про джойн\ninner join B as b on b.x = @p",
+            Expected = "select\n\t*\nfrom A as a\n\n\t--про джойн\n\tinner join B as b\n\t\ton b.x = @p",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "the rule applies in delete ... from and update ... from",
+            Input    = "delete d from D as d inner join E as e on e.id = @p",
+            Expected = "delete d\nfrom D as d\n\n\tinner join E as e\n\t\ton e.id = @p",
+        },
+        new TestCase {
+            Rule = "joingap", Name = "a correlated subquery in the on counts as a link",
+            Input    = "select * from A as a inner join B as b on b.id = a.id inner join C as c on c.id in (select z.id from Z as z where z.k = b.k)",
+            Expected = "select\n\t*\nfrom A as a\n\tinner join B as b\n\t\ton b.id = a.id\n\tinner join C as c\n\t\ton c.id in (\n\t\t\tselect\n\t\t\t\tz.id\n\t\t\tfrom Z as z\n\t\t\twhere\n\t\t\t\tz.k = b.k\n\t\t)",
+        },
+
         // ── fromlist: several comma-separated FROM sources ────────────────────
         new TestCase {
             Rule = "fromlist", Name = "three sources: first on the from line, the rest one tab in",

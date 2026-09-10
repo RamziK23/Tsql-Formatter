@@ -685,6 +685,128 @@ internal static class RuleHelpers
         return t.Pivot != null ? withHint + EmitPivot(t.Pivot, engine, indent) : withHint;
     }
 
+    // ─── Rule `joingap`: an empty line in front of a join that starts a new chain ──────
+
+    /// <summary>
+    /// True when this join is joined TO <paramref name="previous"/> — the source written directly
+    /// above it — i.e. its ON conditions name at least one column of that source. A join that
+    /// links to something else (an earlier table, a variable, nothing at all) starts a new chain
+    /// and gets an empty line in front of it.
+    ///
+    /// Only the join's OWN conditions count; a link stated in the WHERE or in a later join's ON
+    /// is not one you can see on the join's line. A column written without a qualifier says
+    /// nothing about which source it belongs to — the formatter has no schema — so such names are
+    /// ignored, and a condition made only of them counts as no link. A join with no ON at all
+    /// (CROSS JOIN, APPLY) is linked only through the applied expression itself.
+    /// </summary>
+    public static bool JoinLinksTo(JoinNode join, TableRefNode? previous)
+    {
+        if (previous == null) return true;
+        var names = SourceNames(previous);
+        if (names.Count == 0) return true;
+
+        var qualifiers = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        if (join.Conditions.Count > 0)
+            foreach (var c in join.Conditions) CollectQualifiers(c, qualifiers);
+        else
+            // CROSS / OUTER APPLY: the correlation is written inside the applied function or
+            // subquery. A plain CROSS JOIN has neither, and no link.
+            CollectQualifiers(join.Table, qualifiers);
+
+        return qualifiers.Overlaps(names);
+    }
+
+    /// <summary>
+    /// The names a source answers to in a column reference: its alias, or — with no alias — the
+    /// last part of its name ("webcar.dbo.city" is referenced as "city.id").
+    /// </summary>
+    private static HashSet<string> SourceNames(TableRefNode t)
+    {
+        var names = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        // A PIVOT closes with an alias of its own, and that is what the columns are qualified
+        // with: "… pivot ( … ) as p … on d.id = p.id".
+        if (t.Pivot?.Alias != null) names.Add(Unquote(t.Pivot.Alias.Value));
+        if (t.Alias != null) names.Add(Unquote(t.Alias.Value));
+        else if (t.Name.Count > 0) names.Add(Unquote(t.Name[^1].Value));
+        return names;
+    }
+
+    /// <summary>Strips the [brackets] or "quotes" around an identifier, so "a"."id" and a.id
+    /// name the same source.</summary>
+    private static string Unquote(string name) =>
+        name.Length > 1 && (name[0] == '[' && name[^1] == ']' || name[0] == '"' && name[^1] == '"')
+            ? name.Substring(1, name.Length - 2) : name;
+
+    /// <summary>
+    /// Collects the qualifiers of every qualified column reference inside an expression —
+    /// the "a" of "a.id", the "city" of "webcar.dbo.city.id".
+    /// </summary>
+    private static void CollectQualifiers(AstNode? node, HashSet<string> sink)
+    {
+        switch (node)
+        {
+            case null: return;
+
+            case ColumnRefNode c when c.Parts.Count >= 3:
+                // Parts are name, '.', name, '.', … — the qualifier is the name before the last dot.
+                sink.Add(Unquote(c.Parts[^3].Value));
+                return;
+
+            case ConditionNode cn:      CollectQualifiers(cn.Expression, sink); return;
+            case ConditionGroupNode g:  foreach (var c in g.Conditions) CollectQualifiers(c, sink); return;
+            case BinaryExprNode b:      CollectQualifiers(b.Left, sink); CollectQualifiers(b.Right, sink); return;
+            case ParenExprNode p:       CollectQualifiers(p.Inner, sink); return;
+            case NotExprNode n:         CollectQualifiers(n.Inner, sink); return;
+            case UnaryExprNode u:       CollectQualifiers(u.Operand, sink); return;
+            case InlineCommentedNode i: CollectQualifiers(i.Inner, sink); return;
+            case CommentedValueNode cv: CollectQualifiers(cv.Value, sink); return;
+            case ListItemNode li:       CollectQualifiers(li.Expression, sink); return;
+            case OrderByItemNode ob:    CollectQualifiers(ob.Expression, sink); return;
+            case InValueGroupNode ivg:  foreach (var v in ivg.Values) CollectQualifiers(v, sink); return;
+            case IsNullExprNode isn:    CollectQualifiers(isn.Left, sink); return;
+            case LikeExprNode lk:       CollectQualifiers(lk.Left, sink); CollectQualifiers(lk.Pattern, sink); return;
+
+            case BetweenExprNode bt:
+                CollectQualifiers(bt.Left, sink); CollectQualifiers(bt.Low, sink);
+                CollectQualifiers(bt.High, sink); return;
+
+            case InExprNode ie:
+                CollectQualifiers(ie.Left, sink);
+                foreach (var v in ie.Values) CollectQualifiers(v, sink);
+                CollectQualifiers(ie.SubQuery, sink); return;
+
+            case FunctionCallNode fn:
+                foreach (var a in fn.Arguments) CollectQualifiers(a, sink);
+                CollectQualifiers(fn.OverClause, sink); return;
+
+            case CaseExprNode ce:
+                CollectQualifiers(ce.InputExpr, sink);
+                foreach (var w in ce.WhenClauses) CollectQualifiers(w, sink);
+                CollectQualifiers(ce.ElseExpr, sink); return;
+
+            case WhenClauseNode wc:
+                foreach (var c in wc.Conditions) CollectQualifiers(c, sink);
+                CollectQualifiers(wc.Then, sink); return;
+
+            // A correlated subquery names the outer source it correlates with — that is a link.
+            case SubQueryNode sq:  CollectQualifiers(sq.Select, sink); return;
+            case SelectStatementNode sel:
+                foreach (var c in sel.Columns)          CollectQualifiers(c.Expression, sink);
+                foreach (var c in sel.WhereConditions)  CollectQualifiers(c, sink);
+                foreach (var c in sel.HavingConditions) CollectQualifiers(c, sink);
+                foreach (var f in sel.FromClauses)      CollectQualifiers(f, sink);
+                return;
+
+            // A function-valued or derived table source: "cross apply dbo.f(a.id) as x".
+            case TableRefNode tr:
+                if (tr.FuncArgs != null) foreach (var a in tr.FuncArgs) CollectQualifiers(a, sink);
+                CollectQualifiers(tr.SubQuery, sink); return;
+            case JoinNode jn:
+                foreach (var c in jn.Conditions) CollectQualifiers(c, sink);
+                return;
+        }
+    }
+
     /// <summary>
     /// Rule `pivot`: the PIVOT/UNPIVOT keyword starts its own line at the source's indent, the
     /// aggregate and the FOR line sit one tab in, and every value of the IN list gets its own
@@ -772,10 +894,15 @@ internal static class RuleHelpers
     /// First condition always on same line as ON.
     /// Additional conditions on new lines at +2 tabs.
     /// </summary>
-    public static string FormatJoin(JoinNode join, FormatterEngine engine, int indent)
+    /// <param name="blankLineBefore">Set by <see cref="JoinLinksTo"/>: the join hangs off
+    /// something other than the source right above it, so an empty line separates the two. It goes
+    /// above the join's own comments — they belong to the join and travel with it.</param>
+    public static string FormatJoin(JoinNode join, FormatterEngine engine, int indent,
+                                    bool blankLineBefore = false)
     {
         var tabs = Tabs(indent);
         var sb   = new System.Text.StringBuilder();
+        if (blankLineBefore) sb.Append('\n');
 
         // Standalone comments that preceded this join, each on its own line at join indent.
         foreach (var c in join.LeadingComments)
