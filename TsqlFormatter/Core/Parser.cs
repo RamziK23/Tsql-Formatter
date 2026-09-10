@@ -1469,6 +1469,21 @@ public sealed class Parser
             Expect(TokenType.RightParen);
         }
 
+        // OPENJSON declares its result columns in a WITH ( … ) of its own, which is a column
+        // list, not a table hint — and the alias comes AFTER it. Read as a hint, the whole schema
+        // was printed on one line and the trailing "as j" fell out of the statement.
+        List<ColumnDefNode>? jsonColumns = null;
+        if (funcArgs != null && nameParts.Count == 1
+            && nameParts[0].Value.Equals("openjson", StringComparison.OrdinalIgnoreCase)
+            && PeekPastComments().IsKeyword("WITH") && PeekPastComments(1).Type == TokenType.LeftParen)
+        {
+            _pendingComments.AddRange(CollectStandaloneComments());
+            Advance(); // with
+            Advance(); // (
+            jsonColumns = new List<ColumnDefNode>();
+            ParseColumnDefs(jsonColumns);
+        }
+
         Token? alias = null;
         if (Peek().IsKeyword("AS")) { Advance(); alias = Advance(); }
         else if (Peek().Type is TokenType.Identifier or TokenType.QuotedIdentifier
@@ -1513,7 +1528,7 @@ public sealed class Parser
         return new TableRefNode { Alias = alias, FuncArgs = funcArgs, IsOpenQuery = isOpenQuery,
                                  HintNolock = hint, LeadingComment = leadComment }
             .Tap(n => { n.Name.AddRange(nameParts); n.ColumnAliases.AddRange(columnAliases);
-                        n.Pivot = TryParsePivot(); });
+                        n.JsonColumns = jsonColumns; n.Pivot = TryParsePivot(); });
     }
 
     /// <summary>

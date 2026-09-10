@@ -678,6 +678,10 @@ internal static class RuleHelpers
         {
             nameStr = string.Join("", t.Name.Select(p => p.Value));
         }
+        // OPENJSON's schema: the column list opens on the source's line and closes at its indent,
+        // like a CREATE TABLE body; the alias follows the closing paren.
+        if (t.JsonColumns != null)
+            nameStr += $" with (\n{EmitColumnDefs(t.JsonColumns, indent)}{Tabs(indent)})";
         var withAlias = t.Alias != null ? $"{nameStr} as {t.Alias.Value}" : nameStr;
         // The column list a derived table declares after its alias stays on that line.
         if (withColumnAliases && t.ColumnAliases.Count > 0)

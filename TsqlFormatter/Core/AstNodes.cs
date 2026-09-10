@@ -332,6 +332,9 @@ public sealed class TableRefNode : AstNode
     public List<Token> ColumnAliases { get; } = new();
     /// <summary>Subquery used as a table source: (SELECT ...) AS alias</summary>
     public SubQueryNode? SubQuery { get; init; }
+    /// <summary>The schema an OPENJSON declares: "openjson(@j) with (id int '$.id', …)".
+    /// Laid out like a CREATE TABLE column list; null when the author wrote none.</summary>
+    public List<ColumnDefNode>? JsonColumns { get; set; }
     /// <summary>Arguments for function-valued table sources: func(arg1, arg2) AS alias</summary>
     public List<AstNode>? FuncArgs { get; init; }
     /// <summary>True when this is an OPENQUERY(server, 'remote sql') table source (rule 7).</summary>

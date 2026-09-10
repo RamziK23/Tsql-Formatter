@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~89 · Тестов: 353/353 · Движок: .NET 5
+- Правил: ~90 · Тестов: 356/356 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1239,6 +1239,33 @@ select
 from t with (nolock)
 where
 	x = 1
+```
+
+### `openjson` — Схема `openjson(…) with ( … )` — список колонок, а не хинт
+У `openjson` есть собственное `with ( … )`, в котором описаны колонки результата, и псевдоним
+источника идёт **после** него. Список раскладывается как тело `create table`: скобка открывается
+на строке источника, по колонке на строку (+1 таб), закрывающая скобка — на уровне источника,
+за ней псевдоним.
+
+Раньше это `with ( … )` разбиралось как табличный хинт: вся схема печаталась одной строкой,
+а `as j` вываливался из оператора отдельной строкой. Обычный хинт (`with (nolock)`) остался
+хинтом — схема распознаётся только у `openjson`.
+
+```sql
+-- вход
+select j.id
+from openjson(@json_input)
+with (
+id int '$.id',
+details_json nvarchar(max) '$.details' as json
+) as j
+-- результат
+select
+	j.id
+from openjson(@json_input) with (
+	id int '$.id',
+	details_json nvarchar(max) '$.details' as json
+) as j
 ```
 
 ### `derived` — Подзапрос как источник (derived table)

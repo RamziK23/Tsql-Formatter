@@ -1834,6 +1834,23 @@ public static class TestCases
             Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
         },
 
+        // ── openjson: the WITH ( … ) schema, not a table hint ─────────────────
+        new TestCase {
+            Rule = "openjson", Name = "with schema is a column list and the alias follows it",
+            Input    = "select j.id, j.raw_text\nfrom openjson(@json_input)\nwith (\nid int '$.id',\ncode varchar(50) '$.code',\ndetails_json nvarchar(max) '$.details' as json,\nraw_text nvarchar(100) '$.raw_text'\n) as j",
+            Expected = "select\n\tj.id,\n\tj.raw_text\nfrom openjson(@json_input) with (\n\tid int '$.id',\n\tcode varchar(50) '$.code',\n\tdetails_json nvarchar(max) '$.details' as json,\n\traw_text nvarchar(100) '$.raw_text'\n) as j",
+        },
+        new TestCase {
+            Rule = "openjson", Name = "openjson schema keeps the deeper indent of an apply",
+            Input    = "select * from A as a cross apply openjson(a.j) WITH (id INT '$.id') as j",
+            Expected = "select\n\t*\nfrom A as a\n\tcross apply openjson(a.j) with (\n\t\tid int '$.id'\n\t) as j",
+        },
+        new TestCase {
+            Rule = "openjson", Name = "a table hint is still a hint",
+            Input    = "select * from dbo.T as t with (nolock) inner join dbo.U as u with (nolock) on u.id = t.id",
+            Expected = "select\n\t*\nfrom dbo.T as t with (nolock)\n\tinner join dbo.U as u with (nolock)\n\t\ton u.id = t.id",
+        },
+
         // ── window: WITHIN GROUP (ORDER BY …) ────────────────────────────────
         new TestCase {
             Rule = "window", Name = "string_agg within group is laid out like over",
