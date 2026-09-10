@@ -347,16 +347,17 @@ internal static class RuleHelpers
     /// PARTITION BY / ORDER BY item on a line of its own one tab further, the closing paren back
     /// at the OVER's indent — so a long window spec reads as a list, like every other list here.
     /// </summary>
-    private static string EmitOver(AstNode over, FormatterEngine engine, int indent)
+    private static string EmitOver(AstNode over, FormatterEngine engine, int indent,
+                                   string keyword = "over")
     {
         // A spec the parser could not break down stays inline, as before.
-        if (over is not WindowSpecNode w) return $" over ({EmitExpr(over, engine, indent)})";
+        if (over is not WindowSpecNode w) return $" {keyword} ({EmitExpr(over, engine, indent)})";
 
         var t1 = Tabs(indent + 1);
         var t2 = Tabs(indent + 2);
         var t3 = Tabs(indent + 3);
         var sb = new System.Text.StringBuilder();
-        sb.Append($"\n{t1}over (");
+        sb.Append($"\n{t1}{keyword} (");
         foreach (var c in w.LeadingComments) sb.Append($"\n{t2}{c}");
         AppendWindowList(sb, "partition by", w.PartitionBy, engine, t2, t3, indent + 3);
         AppendWindowList(sb, "order by",     w.OrderBy,     engine, t2, t3, indent + 3);
@@ -463,7 +464,9 @@ internal static class RuleHelpers
         // newid(). A schema-qualified name (dbo.MyFunc) keeps its case.
         var fnName = (fn.IsKeywordFunction || !fn.Name.Contains('.'))
             ? fn.Name.ToLowerInvariant() : fn.Name;
-        var overStr = fn.OverClause != null ? EmitOver(fn.OverClause, engine, indent) : "";
+        // WITHIN GROUP comes first, then OVER — the order T-SQL writes them in.
+        var overStr = (fn.WithinGroup != null ? EmitOver(fn.WithinGroup, engine, indent, "within group") : "")
+                    + (fn.OverClause != null ? EmitOver(fn.OverClause, engine, indent) : "");
 
         // Decide whether to break arguments onto their own lines:
         // do so when at least one argument renders as multiline (contains a CASE,

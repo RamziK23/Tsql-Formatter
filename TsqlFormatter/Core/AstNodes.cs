@@ -498,6 +498,9 @@ public sealed class FunctionCallNode : AstNode
     /// <summary>True when the function name was a SQL keyword (built-in). Emit lowercase.</summary>
     public bool IsKeywordFunction { get; init; }
     public List<AstNode> Arguments { get; } = new();
+    /// <summary>WITHIN GROUP (ORDER BY …) — the ordered-set clause of string_agg and the
+    /// percentile functions. Same shape as OVER, and printed the same way.</summary>
+    public AstNode? WithinGroup { get; set; }
     /// <summary>
     /// Trailing comment per argument (same length as <see cref="Arguments"/>, null where there is
     /// none). A comma goes before the comment, never inside it.

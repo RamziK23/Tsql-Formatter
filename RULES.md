@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~88 · Тестов: 350/350 · Движок: .NET 5
+- Правил: ~89 · Тестов: 353/353 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1685,6 +1685,29 @@ select
 				new_column
 		) as updated_decision_group
 from #res as w
+```
+
+### `withingroup` — `WITHIN GROUP (ORDER BY …)` раскладывается как `OVER`
+Упорядоченные агрегаты — `string_agg(…) within group (order by …)`, `percentile_cont(…) within
+group (order by …)` — получают ту же раскладку, что и `over (…)`: ключевые слова с новой строки
+на +1 таб, `order by` на +2, каждый элемент списка на +3. Если у функции есть и `within group`,
+и `over`, они идут в этом порядке — как того требует T-SQL.
+
+`within` не зарезервировано, поэтому раньше оно читалось как псевдоним колонки, а `group` за ним —
+как начало `group by`: разбор падал с `expected Keyword 'BY', got '('`, и скрипт не форматировался.
+Псевдонимом `within` быть не перестало: `select f(x) within` по-прежнему даёт `f(x) as within`.
+
+```sql
+-- вход
+select string_agg(t.tag_name, ', ') within group (order by t.tag_name) as tags from dbo.tags as t
+-- результат
+select
+	string_agg(t.tag_name, ', ')
+		within group (
+			order by
+				t.tag_name
+		) as tags
+from dbo.tags as t
 ```
 
 ### `dottedfn` — Функции с составным именем `schema.fn(args)`

@@ -1834,6 +1834,23 @@ public static class TestCases
             Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
         },
 
+        // ── window: WITHIN GROUP (ORDER BY …) ────────────────────────────────
+        new TestCase {
+            Rule = "window", Name = "string_agg within group is laid out like over",
+            Input    = "select string_agg(t.tag_name, ', ') within group (order by t.tag_name) as tags from dbo.tags as t",
+            Expected = "select\n\tstring_agg(t.tag_name, ', ')\n\t\twithin group (\n\t\t\torder by\n\t\t\t\tt.tag_name\n\t\t) as tags\nfrom dbo.tags as t",
+        },
+        new TestCase {
+            Rule = "window", Name = "within group and over together, in that order",
+            Input    = "select percentile_cont(0.5) WITHIN GROUP (ORDER BY x DESC) OVER (PARTITION BY g) as med from t",
+            Expected = "select\n\tpercentile_cont(0.5)\n\t\twithin group (\n\t\t\torder by\n\t\t\t\tx desc\n\t\t)\n\t\tover (\n\t\t\tpartition by\n\t\t\t\tg\n\t\t) as med\nfrom t",
+        },
+        new TestCase {
+            Rule = "window", Name = "within stays usable as a bare alias",
+            Input    = "select f(x) within from t",
+            Expected = "select\n\tf(x) as within\nfrom t",
+        },
+
         // ── joingap: an empty line before a join that starts a new chain ──────
         new TestCase {
             Rule = "joingap", Name = "a chain of joins stays together",

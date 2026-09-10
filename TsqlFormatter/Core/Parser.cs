@@ -2318,10 +2318,23 @@ public sealed class Parser
             if (!sawComma) break;
         }
         Expect(TokenType.RightParen);
+        // Ordered-set aggregate: "string_agg(x, ',') within group (order by x)". WITHIN is not a
+        // reserved word, so it was read as the column's alias and the GROUP behind it as the
+        // start of a GROUP BY — "expected Keyword 'BY', got '('" — and the script came back
+        // unformatted. The clause holds an ORDER BY in parens, exactly like OVER.
+        AstNode? withinGroup = null;
+        if (Peek().Value.Equals("WITHIN", StringComparison.OrdinalIgnoreCase)
+            && PeekAt(1).IsKeyword("GROUP") && PeekAt(2).Type == TokenType.LeftParen)
+        {
+            Advance(); // within
+            Advance(); // group
+            withinGroup = ParseWindowSpec();
+        }
         // Window function: OVER clause may follow the closing paren
         AstNode? overClause = null;
         if (Peek().IsKeyword("OVER")) { Advance(); overClause = ParseWindowSpec(); }
-        var fn = new FunctionCallNode { Name = name, IsKeywordFunction = isKeyword, OverClause = overClause, SetQuantifier = setQuantifier };
+        var fn = new FunctionCallNode { Name = name, IsKeywordFunction = isKeyword, OverClause = overClause,
+                                        WithinGroup = withinGroup, SetQuantifier = setQuantifier };
         fn.Arguments.AddRange(args);
         fn.ArgumentComments.AddRange(argComments);
         return fn;
