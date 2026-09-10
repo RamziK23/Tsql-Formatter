@@ -141,6 +141,18 @@ public sealed class SelectStatementNode : AstNode
     /// <summary>Query hint clause: OPTION (...). Tokens inside the parens (excluding them),
     /// or null when absent. Rendered as a trailing "option(...)" line, never as a condition.</summary>
     public List<Token>? OptionTokens { get; set; }
+    /// <summary>Paging: the expression of "offset &lt;expr&gt; rows", or null when absent.</summary>
+    public AstNode? OffsetExpr { get; set; }
+    /// <summary>"row" or "rows", as the author wrote it (lowercased).</summary>
+    public string? OffsetRowWord { get; set; }
+    public string? OffsetComment { get; set; }
+    /// <summary>"first" or "next" of "fetch next &lt;expr&gt; rows only".</summary>
+    public string? FetchKind { get; set; }
+    public AstNode? FetchExpr { get; set; }
+    public string? FetchRowWord { get; set; }
+    /// <summary>True when the author closed the clause with ONLY, as T-SQL requires.</summary>
+    public bool FetchOnly { get; set; }
+    public string? FetchComment { get; set; }
 }
 
 /// <summary>

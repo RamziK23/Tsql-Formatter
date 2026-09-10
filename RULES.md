@@ -5,7 +5,7 @@
 FormatterEngine + Rules), а не план. Бейдж-`id` каждого правила совпадает со значением
 поля `Rule` в тестах — по нему запускается `run-tests.bat --rule <id>`.
 
-- Правил: ~86 · Тестов: 328/328 · Движок: .NET 5
+- Правил: ~87 · Тестов: 334/334 · Движок: .NET 5
 - Источник истины — код: `Core/Lexer.cs`, `Core/Parser.cs`, `Formatting/FormatterEngine.cs`, `Rules/*.cs`
 - Индентация везде — символы табуляции (`\t`)
 
@@ -1472,6 +1472,33 @@ order by
 	a desc,
 	b asc
 ```
+
+---
+
+### `paging` — OFFSET … FETCH …: по клаузе на строку
+Постраничная выборка относится к `order by`, но каждая её клауза печатается **своей строкой на
+уровне самого оператора**: сначала `offset <выражение> rows`, затем `fetch next <выражение> rows
+only`. Слова `offset`, `fetch`, `first`/`next`, `row`/`rows`, `only` — служебные, уходят в нижний
+регистр; `offset (` больше не склеивается, как будто это вызов функции.
+
+Раньше вся конструкция уходила в сырой хвост и печаталась одной строкой:
+`offset(@pagenumber - 1) * @pagesize rows fetch next @pagesize rows only;`.
+
+```sql
+-- вход
+SELECT a FROM t ORDER BY a OFFSET (@pagenumber - 1) * @pagesize ROWS FETCH NEXT @pagesize ROWS ONLY;
+-- результат
+select
+	a
+from t
+order by
+	a
+offset (@pagenumber - 1) * @pagesize rows
+fetch next @pagesize rows only;
+```
+
+Курсорный `fetch next from cur into @x` — не постраничная выборка и остаётся отдельным
+оператором. `row`, `rows`, `next`, `only` по-прежнему годятся в качестве имён колонок.
 
 ---
 

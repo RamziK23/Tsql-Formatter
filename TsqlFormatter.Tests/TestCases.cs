@@ -1668,6 +1668,38 @@ public static class TestCases
             Expected = "select\n\ta\nfrom (\n\tselect\n\t\t1 as x\n) as t (a)",
         },
 
+        // ── paging: OFFSET … FETCH … ─────────────────────────────────────────
+        new TestCase {
+            Rule = "paging", Name = "offset and fetch each take a line at the statement's indent",
+            Input    = "select\na,\nb\nfrom rankeddata\nwhere rn = 1\norder by a\noffset (@pagenumber - 1) * @pagesize rows\nfetch next @pagesize rows only;",
+            Expected = "select\n\ta,\n\tb\nfrom rankeddata\nwhere\n\trn = 1\norder by\n\ta\noffset (@pagenumber - 1) * @pagesize rows\nfetch next @pagesize rows only;",
+        },
+        new TestCase {
+            Rule = "paging", Name = "paging keywords lowercased, offset not glued to its paren",
+            Input    = "SELECT a FROM t ORDER BY a OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY;",
+            Expected = "select\n\ta\nfrom t\norder by\n\ta\noffset 10 rows\nfetch next 20 rows only;",
+        },
+        new TestCase {
+            Rule = "paging", Name = "offset without fetch, and fetch first / row",
+            Input    = "select a from t order by a offset @p rows fetch first 5 row only option (recompile)",
+            Expected = "select\n\ta\nfrom t\norder by\n\ta\noffset @p rows\nfetch first 5 row only\noption(recompile)",
+        },
+        new TestCase {
+            Rule = "paging", Name = "paging inside a subquery follows its indent",
+            Input    = "select a from (select b from t order by b offset 1 rows fetch next 2 rows only) as x",
+            Expected = "select\n\ta\nfrom (\n\tselect\n\t\tb\n\tfrom t\n\torder by\n\t\tb\n\toffset 1 rows\n\tfetch next 2 rows only\n) as x",
+        },
+        new TestCase {
+            Rule = "paging", Name = "row / rows / next stay usable as column names",
+            Input    = "select rows, only, next from t",
+            Expected = "select\n\trows,\n\tonly,\n\tnext\nfrom t",
+        },
+        new TestCase {
+            Rule = "paging", Name = "cursor FETCH is not a paging clause",
+            Input    = "FETCH NEXT FROM cur INTO @x",
+            Expected = "fetch next from cur into @x",
+        },
+
         // ── pivot: PIVOT / UNPIVOT laid out as a block ────────────────────────
         new TestCase {
             Rule = "pivot", Name = "pivot over a derived table, one IN value per line",

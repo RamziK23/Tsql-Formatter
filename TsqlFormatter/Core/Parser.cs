@@ -798,6 +798,39 @@ public sealed class Parser
         if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
         if (Peek().IsKeyword("HAVING")) { Advance(); node.HavingConditions.AddRange(ParseConditionList(isJoinOn: false)); }
         if (Peek().IsKeyword("ORDER"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.OrderByColumns.AddRange(ParseOrderByList()); }
+        // Paging, which belongs to the ORDER BY: "offset <expr> rows fetch next <expr> rows only".
+        // Each clause takes a line of its own at the statement's indent. Left to the raw fallback
+        // they ran together on one line and "offset(" came out glued like a function call.
+        if (PeekPastComments().IsKeyword("OFFSET"))
+        {
+            _pendingComments.AddRange(CollectStandaloneComments());
+            Advance(); // OFFSET
+            _pendingComments.AddRange(CollectStandaloneComments());
+            node.OffsetExpr    = ParseExpression();
+            // A -- comment the expression captured would hide the ROWS behind it; it belongs at
+            // the end of the clause's line instead.
+            node.OffsetComment = TakeLineCommentFrom(node.OffsetExpr);
+            _pendingComments.AddRange(CollectStandaloneComments());
+            node.OffsetRowWord = TakeRowWord();
+            node.OffsetComment ??= TryTakeSameLineInlineComment();
+            if (PeekPastComments().IsKeyword("FETCH"))
+            {
+                _pendingComments.AddRange(CollectStandaloneComments());
+                Advance(); // FETCH
+                _pendingComments.AddRange(CollectStandaloneComments());
+                if (Peek().IsKeyword("FIRST") || Peek().IsKeyword("NEXT"))
+                    node.FetchKind = Advance().Value.ToLowerInvariant();
+                _pendingComments.AddRange(CollectStandaloneComments());
+                node.FetchExpr    = ParseExpression();
+                node.FetchComment = TakeLineCommentFrom(node.FetchExpr);
+                _pendingComments.AddRange(CollectStandaloneComments());
+                node.FetchRowWord = TakeRowWord();
+                _pendingComments.AddRange(CollectStandaloneComments());
+                if (Peek().IsKeyword("ONLY")) { Advance(); node.FetchOnly = true; }
+                node.FetchComment ??= TryTakeSameLineInlineComment();
+            }
+        }
+
         // OPTION (...) query hint — a trailing clause, not a WHERE condition.
         if (Peek().IsKeyword("OPTION"))
         {
@@ -1709,13 +1742,44 @@ public sealed class Parser
     }
 
     /// <summary>Handles +, -, string concatenation, and bitwise &amp; | ^ (same precedence in T-SQL).</summary>
+    /// <summary>
+    /// Reads the comments that stand where an arithmetic operator is expected ("(@a - 1) /*x*/ *
+    /// @b"). A /* */ comment is returned to be rendered in front of the operator; a -- comment
+    /// cannot live there — the operator behind it would be commented out — so it is lifted above
+    /// the statement. Everything is given back by Rewind when no operator follows after all.
+    /// </summary>
+    private string? TakeOperatorComments()
+    {
+        string? inline = null;
+        while (true)
+        {
+            int i = _pos;
+            while (i < _tokens.Count && Skippable.Contains(_tokens[i].Type)) i++;
+            if (i >= _tokens.Count) break;
+            if (_tokens[i].Type == TokenType.BlockComment)
+            {
+                var value = _tokens[i].Value;
+                _pos = i + 1;
+                if (_hoistComments) _pendingComments.Add(value);
+                else inline = inline == null ? value : inline + " " + value;
+            }
+            else if (_tokens[i].Type == TokenType.LineComment)
+            {
+                _pendingComments.Add(_tokens[i].Value);
+                _pos = i + 1;
+            }
+            else break;
+        }
+        return inline;
+    }
+
     private AstNode ParseAdditive()
     {
         var left = ParseMultiplicative();
         while (true)
         {
             int beforeComments = _pos, parked = _pendingComments.Count;
-            var comment = TryTakeInlineBlockComment();
+            var comment = TakeOperatorComments();
             var op = Peek();
             if (op.Type is not (TokenType.Plus or TokenType.Minus or TokenType.BitwiseOp))
             { Rewind(beforeComments, parked); break; }
@@ -1734,7 +1798,7 @@ public sealed class Parser
         while (true)
         {
             int beforeComments = _pos, parked = _pendingComments.Count;
-            var comment = TryTakeInlineBlockComment();
+            var comment = TakeOperatorComments();
             var op = Peek();
             if (op.Type is not (TokenType.Multiply or TokenType.Divide or TokenType.Percent))
             { Rewind(beforeComments, parked); break; }
@@ -2337,6 +2401,15 @@ public sealed class Parser
     }
 
     /// <summary>Parses ORDER BY items, preserving optional ASC/DESC direction.</summary>
+    /// <summary>Takes the ROW / ROWS that closes an OFFSET or FETCH clause, lowercased as
+    /// written; null when the author left it out.</summary>
+    private string? TakeRowWord()
+    {
+        if (Peek().IsKeyword("ROWS")) { Advance(); return "rows"; }
+        if (Peek().IsKeyword("ROW"))  { Advance(); return "row"; }
+        return null;
+    }
+
     private List<AstNode> ParseOrderByList()
     {
         var list = new List<AstNode>();

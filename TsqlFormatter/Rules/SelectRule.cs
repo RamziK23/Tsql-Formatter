@@ -172,6 +172,26 @@ public sealed class SelectRule : IFormatterRule
             }
         }
 
+        // ── OFFSET / FETCH paging — one clause per line, at the statement's indent ──
+        if (sel.OffsetExpr != null)
+        {
+            var off = $"{tabs}offset {RuleHelpers.EmitExpr(sel.OffsetExpr, engine, indent)}";
+            if (sel.OffsetRowWord != null) off += $" {sel.OffsetRowWord}";
+            if (sel.OffsetComment != null) off = RuleHelpers.AppendTrailing(off, sel.OffsetComment);
+            sb.Append($"\n{off}");
+
+            if (sel.FetchExpr != null)
+            {
+                var fetch = $"{tabs}fetch";
+                if (sel.FetchKind != null) fetch += $" {sel.FetchKind}";
+                fetch += $" {RuleHelpers.EmitExpr(sel.FetchExpr, engine, indent)}";
+                if (sel.FetchRowWord != null) fetch += $" {sel.FetchRowWord}";
+                if (sel.FetchOnly) fetch += " only";
+                if (sel.FetchComment != null) fetch = RuleHelpers.AppendTrailing(fetch, sel.FetchComment);
+                sb.Append($"\n{fetch}");
+            }
+        }
+
         // ── OPTION (...) query hint — trailing line, never a WHERE condition ──
         if (sel.OptionTokens != null)
             sb.Append($"\n{tabs}option({RuleHelpers.EmitRawTokens(sel.OptionTokens)})");

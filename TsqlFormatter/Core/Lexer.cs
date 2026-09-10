@@ -19,6 +19,8 @@ public sealed class Lexer
         "CASE","WHEN","THEN","ELSE","OPENQUERY","EXISTS","WITH",
         "DECLARE","PRINT","RAISERROR","TRY","CATCH","THROW",
         "ASC","DESC","NULLS","FIRST","LAST","COLLATE","PERCENT","TIES",
+        // Paging: "order by … offset 10 rows fetch next 20 rows only".
+        "OFFSET","FETCH","NEXT","ROW","ROWS","ONLY",
         "MIN","MAX","SUM","COUNT","AVG","COALESCE","ISNULL","NULLIF","CONCAT",
         "CAST","CONVERT","DATEDIFF","DATEADD","GETDATE","GETUTCDATE","YEAR","MONTH","DAY",
         "LEN","LTRIM","RTRIM","TRIM","SUBSTRING","CHARINDEX","REPLACE","STUFF","FORMAT",
