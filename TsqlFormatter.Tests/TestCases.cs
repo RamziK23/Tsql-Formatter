@@ -1871,6 +1871,21 @@ public static class TestCases
             Expected = "select\n\t1\nfrom t\nif @x = 1\nselect\n\t2\nfrom t",
         },
         new TestCase {
+            Rule = "dropgap", Name = "a run of cleanup drops is one block, only the first gets the line",
+            Input    = "select 1 from t\ndrop table if exists #a\ndrop table if exists #b\ndrop table if exists #c\nselect 2 from t",
+            Expected = "select\n\t1\nfrom t\n\ndrop table if exists #a\ndrop table if exists #b\ndrop table if exists #c\nselect\n\t2\nfrom t",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "a comment inside a run does not break it",
+            Input    = "select 1 from t\ndrop table if exists #a\n--про b\ndrop table if exists #b",
+            Expected = "select\n\t1\nfrom t\n\ndrop table if exists #a\n--про b\ndrop table if exists #b",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "a statement between two drops starts a new run",
+            Input    = "select 1 from t\ndrop table if exists #a\nselect 9 from u\ndrop table if exists #b",
+            Expected = "select\n\t1\nfrom t\n\ndrop table if exists #a\nselect\n\t9\nfrom u\n\ndrop table if exists #b",
+        },
+        new TestCase {
             Rule = "dropgap", Name = "an existing empty line stays a single one",
             Input    = "select 1 from t\n\ndrop table if exists #a",
             Expected = "select\n\t1\nfrom t\n\ndrop table if exists #a",

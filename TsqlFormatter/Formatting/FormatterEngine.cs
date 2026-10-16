@@ -304,6 +304,7 @@ public sealed class FormatterEngine
         bool isFirst = true;
         bool prevWasGo = false;
         bool prevWasTryCatch = false;
+        bool prevWasCleanupDrop = false;
         string? pendingComment = null;  // a standalone comment awaiting the next statement
         string pendingSep = "\n";       // separator between the pending comment and next statement
         bool pendingBlank = false;      // blank line before the pending comment block
@@ -367,8 +368,10 @@ public sealed class FormatterEngine
             if (prevWasTryCatch || IsTryCatchBlock(stmt)) blankBefore = true;
             // Rule `dropgap`: a cleanup drop — "drop … if exists", or one guarded by
             // "if object_id(…) is not null drop …" — is separated from the code above it. The
-            // blank line goes above the statement's own comments, which belong to it.
-            if (IsCleanupDrop(stmt)) blankBefore = true;
+            // blank line goes above the statement's own comments, which belong to it. A run of
+            // such drops is one block: only the first of the run gets the line.
+            bool cleanupDrop = IsCleanupDrop(stmt);
+            if (cleanupDrop && !prevWasCleanupDrop) blankBefore = true;
 
             // Restore leading semicolon before the first statement (e.g. ;with ...)
             if (isFirst && script.HasLeadingSemicolon)
@@ -378,6 +381,7 @@ public sealed class FormatterEngine
             isFirst = false;
             prevWasGo = stmt is GoSeparatorNode;
             prevWasTryCatch = IsTryCatchBlock(stmt);
+            prevWasCleanupDrop = cleanupDrop;
         }
 
         // A trailing comment with no following statement stands on its own.
