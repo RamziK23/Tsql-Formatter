@@ -135,6 +135,13 @@ public sealed class SelectStatementNode : AstNode
     public List<string> PreFromComments { get; } = new();
     /// <summary>Standalone comments that trailed the FROM/JOIN block (before WHERE/GROUP/etc).</summary>
     public List<string> PostFromComments { get; } = new();
+    /// <summary>Standalone comments written between the previous clause and GROUP BY — usually
+    /// commented-out conditions at the end of the WHERE. Rendered on their own line(s) there.</summary>
+    public List<string> PreGroupComments { get; } = new();
+    /// <summary>The same, before HAVING.</summary>
+    public List<string> PreHavingComments { get; } = new();
+    /// <summary>The same, before ORDER BY.</summary>
+    public List<string> PreOrderComments { get; } = new();
     /// <summary>Comments that preceded the SELECT keyword (e.g. inside "( --note\n select ...)").
     /// Rendered on their own line(s) above the select header.</summary>
     public List<string> LeadingComments { get; } = new();

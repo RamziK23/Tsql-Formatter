@@ -1834,6 +1834,23 @@ public static class TestCases
             Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
         },
 
+        // ── a comment must not hide GROUP BY / HAVING / ORDER BY ─────────────
+        new TestCase {
+            Rule = "cmt-safety", Name = "commented-out conditions do not hide the group by",
+            Input    = "select a from t\nwhere\nx = 1\n--and y = 2\n--and z = 3\ngroup by\na",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\n--and y = 2\n--and z = 3\ngroup by\n\ta",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "a comment does not hide having",
+            Input    = "select a, count(*) from t\ngroup by a\n--закомментировано\nhaving count(*) > 1",
+            Expected = "select\n\ta,\n\tcount(*)\nfrom t\ngroup by\n\ta\n--закомментировано\nhaving\n\tcount(*) > 1",
+        },
+        new TestCase {
+            Rule = "cmt-safety", Name = "a comment does not hide order by",
+            Input    = "select a from t\nwhere x = 1\n--and y = 2\norder by a",
+            Expected = "select\n\ta\nfrom t\nwhere\n\tx = 1\n--and y = 2\norder by\n\ta",
+        },
+
         // ── dropgap: an empty line before a cleanup drop ──────────────────────
         new TestCase {
             Rule = "dropgap", Name = "drop ... if exists is separated from the code above it",

@@ -147,6 +147,8 @@ public sealed class SelectRule : IFormatterRule
         }
 
         // ── GROUP BY ──────────────────────────────────────────────────────────
+        // Comments written between the previous clause and GROUP BY keep their own lines.
+        foreach (var c in sel.PreGroupComments) sb.Append($"\n{tabs}{c}");
         // Every column on its own indented line, regardless of count.
         if (sel.GroupByColumns.Count > 0)
         {
@@ -161,6 +163,7 @@ public sealed class SelectRule : IFormatterRule
 
         // ── HAVING ────────────────────────────────────────────────────────────
         // Like WHERE: the keyword on its own line, each condition on its own line (+1 tab).
+        foreach (var c in sel.PreHavingComments) sb.Append($"\n{tabs}{c}");
         if (sel.HavingConditions.Count > 0)
         {
             sb.Append($"\n{tabs}having");
@@ -169,6 +172,7 @@ public sealed class SelectRule : IFormatterRule
 
         // ── ORDER BY ─────────────────────────────────────────────────────────
         // Every item on its own indented line, regardless of count.
+        foreach (var c in sel.PreOrderComments) sb.Append($"\n{tabs}{c}");
         if (sel.OrderByColumns.Count > 0)
         {
             sb.Append($"\n{tabs}order by");

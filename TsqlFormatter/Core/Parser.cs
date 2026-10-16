@@ -794,10 +794,17 @@ public sealed class Parser
             }
             } while (PeekPastComments().Type == TokenType.Comma && AdvanceCommaKeepingTrailingComment(node));
         }
-        if (Peek().IsKeyword("WHERE"))  { Advance(); node.WhereConditions.AddRange(ParseConditionList(isJoinOn: false)); }
-        if (Peek().IsKeyword("GROUP"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
-        if (Peek().IsKeyword("HAVING")) { Advance(); node.HavingConditions.AddRange(ParseConditionList(isJoinOn: false)); }
-        if (Peek().IsKeyword("ORDER"))  { Advance(); Expect(TokenType.Keyword, "BY"); node.OrderByColumns.AddRange(ParseOrderByList()); }
+        // Each clause is looked for PAST the comments in front of it: a commented-out condition
+        // at the end of a WHERE ("--and temp.source = '200200'") hid the GROUP BY behind it, and
+        // the rest of the statement came out as raw text on one line.
+        if (PeekClause("WHERE", node.PostFromComments))
+        { Advance(); node.WhereConditions.AddRange(ParseConditionList(isJoinOn: false)); }
+        if (PeekClause("GROUP", node.PreGroupComments))
+        { Advance(); Expect(TokenType.Keyword, "BY"); node.GroupByColumns.AddRange(ParseExpressionList()); }
+        if (PeekClause("HAVING", node.PreHavingComments))
+        { Advance(); node.HavingConditions.AddRange(ParseConditionList(isJoinOn: false)); }
+        if (PeekClause("ORDER", node.PreOrderComments))
+        { Advance(); Expect(TokenType.Keyword, "BY"); node.OrderByColumns.AddRange(ParseOrderByList()); }
         // Paging, which belongs to the ORDER BY: "offset <expr> rows fetch next <expr> rows only".
         // Each clause takes a line of its own at the statement's indent. Left to the raw fallback
         // they ran together on one line and "offset(" came out glued like a function call.
