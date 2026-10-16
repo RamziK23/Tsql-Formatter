@@ -246,6 +246,46 @@ public sealed class FormatterEngine
     /// <summary>True for a BEGIN TRY / BEGIN CATCH block (a labelled BEGIN … END).</summary>
     private static bool IsTryCatchBlock(AstNode node) => node is BeginEndNode { Label: not null };
 
+    /// <summary>
+    /// A statement that clears an object out of the way before it is rebuilt: "drop … if exists",
+    /// or a drop guarded by an IF ("if object_id('dbo.f', 'FS') is not null drop function dbo.f").
+    /// Rule `dropgap` gives it an empty line of its own above.
+    /// </summary>
+    private static bool IsCleanupDrop(AstNode node) => node switch
+    {
+        DropTableNode d => d.IfExists,
+        RawTokensNode r => IsDrop(r) && HasIfExists(r),
+        IfNode i        => IsDropBranch(i.Then),
+        _               => false
+    };
+
+    /// <summary>The body of an IF guard: a drop, or a block of nothing but drops.</summary>
+    private static bool IsDropBranch(AstNode? node) => node switch
+    {
+        DropTableNode   => true,
+        RawTokensNode r => IsDrop(r),
+        BeginEndNode b  => b.Body.Any(IsDropBranch)
+                           && b.Body.All(st => IsCommentOnly(st) || IsDropBranch(st)),
+        _               => false
+    };
+
+    private static IEnumerable<Token> Meaningful(RawTokensNode raw) =>
+        raw.Tokens.Where(t => t.Type is not (TokenType.Whitespace or TokenType.Newline
+                                             or TokenType.LineComment or TokenType.BlockComment));
+
+    private static bool IsDrop(RawTokensNode raw) =>
+        Meaningful(raw).FirstOrDefault() is Token t && t.IsKeyword("DROP");
+
+    /// <summary>True for "drop &lt;something&gt; if exists …" — the IF EXISTS stands right after
+    /// the kind of object being dropped.</summary>
+    private static bool HasIfExists(RawTokensNode raw)
+    {
+        var head = Meaningful(raw).Take(4).ToList();
+        for (int i = 1; i + 1 < head.Count; i++)
+            if (head[i].IsKeyword("IF") && head[i + 1].IsKeyword("EXISTS")) return true;
+        return false;
+    }
+
     /// <summary>True if the node is a standalone comment (a RawTokensNode of only comment tokens).</summary>
     private static bool IsCommentOnly(AstNode node)
     {
@@ -325,6 +365,10 @@ public sealed class FormatterEngine
             // A TRY / CATCH block stands apart from what surrounds it — "begin transaction" above
             // it and the "if @@trancount" below it each get their own blank line.
             if (prevWasTryCatch || IsTryCatchBlock(stmt)) blankBefore = true;
+            // Rule `dropgap`: a cleanup drop — "drop … if exists", or one guarded by
+            // "if object_id(…) is not null drop …" — is separated from the code above it. The
+            // blank line goes above the statement's own comments, which belong to it.
+            if (IsCleanupDrop(stmt)) blankBefore = true;
 
             // Restore leading semicolon before the first statement (e.g. ;with ...)
             if (isFirst && script.HasLeadingSemicolon)

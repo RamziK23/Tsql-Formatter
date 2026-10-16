@@ -1834,6 +1834,48 @@ public static class TestCases
             Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
         },
 
+        // ── dropgap: an empty line before a cleanup drop ──────────────────────
+        new TestCase {
+            Rule = "dropgap", Name = "drop ... if exists is separated from the code above it",
+            Input    = "select 1 from t\ndrop table if exists #wru\nselect 2 from t",
+            Expected = "select\n\t1\nfrom t\n\ndrop table if exists #wru\nselect\n\t2\nfrom t",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "drop function if exists counts too",
+            Input    = "select 1 from t\ndrop function if exists dbo.f",
+            Expected = "select\n\t1\nfrom t\n\ndrop function if exists dbo.f",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "a drop guarded by if object_id is separated as well",
+            Input    = "select 1 from t\nif object_id('dbo.f', 'FS') is not null\ndrop function dbo.f",
+            Expected = "select\n\t1\nfrom t\n\nif object_id('dbo.f', 'FS') is not null\ndrop function dbo.f",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "a guard whose body is a block of drops counts",
+            Input    = "select 1 from t\nif object_id('tempdb..#flag') is not null\nbegin\ndrop table #flag\nend",
+            Expected = "select\n\t1\nfrom t\n\nif object_id('tempdb..#flag') is not null\nbegin\n\n\tdrop table #flag\n\nend",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "the empty line goes above the drop's own comment",
+            Input    = "select 1 from t\n--очистка\ndrop table if exists #wru",
+            Expected = "select\n\t1\nfrom t\n\n--очистка\ndrop table if exists #wru",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "a plain drop without a guard is left where it was",
+            Input    = "select 1 from t\ndrop table #t\nselect 2 from t",
+            Expected = "select\n\t1\nfrom t\ndrop table #t\nselect\n\t2\nfrom t",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "an if that is not a guard keeps its spacing",
+            Input    = "select 1 from t\nif @x = 1\nselect 2 from t",
+            Expected = "select\n\t1\nfrom t\nif @x = 1\nselect\n\t2\nfrom t",
+        },
+        new TestCase {
+            Rule = "dropgap", Name = "an existing empty line stays a single one",
+            Input    = "select 1 from t\n\ndrop table if exists #a",
+            Expected = "select\n\t1\nfrom t\n\ndrop table if exists #a",
+        },
+
         // ── openjson: the WITH ( … ) schema, not a table hint ─────────────────
         new TestCase {
             Rule = "openjson", Name = "with schema is a column list and the alias follows it",
