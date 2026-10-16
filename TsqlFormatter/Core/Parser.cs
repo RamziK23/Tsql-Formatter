@@ -2542,10 +2542,20 @@ public sealed class Parser
 
     private AstNode ParseCreate()
     {
-        Advance(); // CREATE
-        if (Peek().IsKeyword("TABLE")) return ParseCreateTable();
-        // Unknown CREATE → raw fallback
-        return ParseRawStatement();
+        var createToken = Advance(); // CREATE
+        // A comment between CREATE and TABLE must not hide the TABLE, the way it must not in a
+        // DROP.
+        var kindComments = new List<string>();
+        if (PeekClause("TABLE", kindComments))
+        {
+            _pendingComments.AddRange(kindComments);
+            return ParseCreateTable();
+        }
+        // Any other CREATE — an index, a view, a trigger — goes through the raw emitter, which
+        // lowercases its keywords and leaves the names alone. CREATE is handed to it as a token
+        // already read: left out, the raw statement began at "clustered", the word "create" was
+        // lost, and the faithfulness gate handed the whole script back unformatted.
+        return ParseRawStatement(new List<Token> { createToken });
     }
 
     private CreateTableNode ParseCreateTable()

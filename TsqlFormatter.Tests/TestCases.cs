@@ -1834,6 +1834,23 @@ public static class TestCases
             Expected = "delete d\nfrom t as d\n\n--next statement\n\nselect\n\t1",
         },
 
+        // ── create: objects other than tables ────────────────────────────────
+        new TestCase {
+            Rule = "2.14", Name = "create index keeps the create keyword",
+            Input    = "select 1 from t\nCREATE CLUSTERED INDEX ix_tmp ON #sales_staging(contractId, saleDate);\nselect 2 from t",
+            Expected = "select\n\t1\nfrom t\ncreate clustered index ix_tmp on #sales_staging(contractId, saleDate);\nselect\n\t2\nfrom t",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "the table of a create index keeps its case",
+            Input    = "CREATE NONCLUSTERED INDEX IX_a ON dbo.T (a, b) INCLUDE (c)",
+            Expected = "create nonclustered index IX_a on dbo.T(a, b) include(c)",
+        },
+        new TestCase {
+            Rule = "2.14", Name = "comment between create and table does not hide the table",
+            Input    = "create /*note*/ table #t (id int)",
+            Expected = "/*note*/\ncreate table #t (\n\tid int\n)",
+        },
+
         // ── a comment must not hide GROUP BY / HAVING / ORDER BY ─────────────
         new TestCase {
             Rule = "cmt-safety", Name = "commented-out conditions do not hide the group by",

@@ -112,8 +112,13 @@ internal static class RuleHelpers
         {
             var t = toks[i];
 
+            // An identifier right before '(' is read as a function name and lowercased — but only
+            // a bare one. A qualified name keeps its case (the rule functions follow everywhere),
+            // and a name after ON is the target of "create index … on dbo.T (a, b)", a table, not
+            // a call: lowercasing it rewrote the table's name.
             bool isFunction = t.Type == TokenType.Identifier
-                && i + 1 < toks.Count && toks[i + 1].Type == TokenType.LeftParen;
+                && i + 1 < toks.Count && toks[i + 1].Type == TokenType.LeftParen
+                && !(i > 0 && (toks[i - 1].Type == TokenType.Dot || toks[i - 1].IsKeyword("ON")));
             string val = t.Type == TokenType.Keyword || isFunction ? t.Value.ToLowerInvariant() : t.Value;
             if (t.Type == TokenType.StringLiteral) val = ReindentStringLiteral(val, indent);
 
